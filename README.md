@@ -401,7 +401,38 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" \
   -o bin/vodlocal-linux-amd64 ./cmd/server
 ```
 
-### 12.2 Pasang di server
+### 12.2 Deploy otomatis (Linux)
+
+Dari root repo di server:
+
+```bash
+sudo bash scripts/deploy-linux.sh
+```
+
+Skrip akan:
+
+- build `bin/vodlocal` bila Go tersedia (atau memakai binary yang sudah ada),
+- membuat `vodlocal.env` dengan session secret dan password admin acak,
+- membuat user `vodlocal`, permission, dan systemd unit,
+- mengecek port, menyalakan service, dan memverifikasi `/health`.
+
+Override lewat environment:
+
+```bash
+sudo -E DISABLE_NGINX=1 \
+  ADMIN_PASSWORD='password-kuat' \
+  DRAMAHITS_BASE_URL='https://host-dramahits/api/v1' \
+  bash scripts/deploy-linux.sh
+```
+
+`DISABLE_NGINX=1` menghentikan dan men-disable nginx. Env yang sudah ada tidak
+ditimpa. Untuk memakai binary hasil build di mesin lain:
+
+```bash
+sudo SKIP_BUILD=1 bash scripts/deploy-linux.sh
+```
+
+### 12.3 Pasang manual (referensi)
 
 ```bash
 scp bin/vodlocal-linux-amd64 <ssh-user>@<server-ip>:/tmp/vodlocal
@@ -410,7 +441,7 @@ sudo useradd --system --home /var/www/VodLocal --shell /usr/sbin/nologin vodloca
 sudo mkdir -p /var/www/VodLocal/bin /var/www/VodLocal/data
 sudo mv /tmp/vodlocal /var/www/VodLocal/bin/vodlocal
 sudo chown -R vodlocal:vodlocal /var/www/VodLocal
-sudo cp deploy/vodlocal.service /etc/systemd/system/
+sudo cp deploy/vodlocal.service /etc/systemd/system/vodlocal.service
 sudo cp deploy/vodlocal.env.example /var/www/VodLocal/vodlocal.env
 sudo editor /var/www/VodLocal/vodlocal.env
 sudo systemctl daemon-reload
@@ -421,7 +452,7 @@ sudo journalctl -u vodlocal -f
 Unit systemd sudah menyertakan `AmbientCapabilities=CAP_NET_BIND_SERVICE`, sehingga
 service dapat listen di port 80 sebagai non-root.
 
-### 12.3 Health check
+### 12.4 Health check
 
 ```bash
 curl -fsS http://<server>/health
@@ -496,6 +527,7 @@ internal/loadgen/    mesin uji beban
 internal/notify/     webhook & Telegram
 internal/devseed/    pembuat konten sintetis
 deploy/              systemd unit + contoh env
+scripts/             run-local.sh + deploy-linux.sh
 openapi.json         spesifikasi OpenAPI 3.0.3
 ```
 
