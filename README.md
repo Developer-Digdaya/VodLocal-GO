@@ -184,8 +184,13 @@ bash scripts/run-local.sh
 Di PowerShell, set environment yang sama lalu jalankan `go run ./cmd/server`.
 Di produksi, semua nilai tetap wajib diisi lewat `/var/www/VodLocal/vodlocal.env`.
 
-Admin default hanya dibuat saat tabel `auth_users` masih kosong. Untuk mereset,
-hapus `data/app.db` (data lokal, tidak ikut repo).
+Admin default hanya dibuat saat tabel `auth_users` masih kosong. Kalau lupa
+kata sandi, reset **hanya akun admin** tanpa menghapus katalog:
+
+```bash
+# hentikan server dulu, lalu:
+go run ./cmd/adminreset -db data/app.db -user admin -password 'password-baru'
+```
 
 Buka `http://127.0.0.1:8080/login`, masuk sebagai admin, lalu buka **List Content**
 di halaman `/sync` untuk memilih konten Densgo (Movie/Series) atau Dramahits (Short).
