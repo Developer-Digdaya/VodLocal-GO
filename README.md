@@ -432,6 +432,13 @@ ditimpa. Untuk memakai binary hasil build di mesin lain:
 sudo SKIP_BUILD=1 bash scripts/deploy-linux.sh
 ```
 
+Jika `go` hanya ada di PATH user (bukan di `secure_path` milik sudo), skrip
+mendeteksinya lewat `SUDO_USER`. Override manual:
+
+```bash
+sudo env GO_BIN="$(command -v go)" bash scripts/deploy-linux.sh
+```
+
 ### 12.3 Pasang manual (referensi)
 
 ```bash

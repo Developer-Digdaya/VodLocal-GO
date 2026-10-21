@@ -13,6 +13,7 @@ set -euo pipefail
 #   ADMIN_PASSWORD       kosong = generate acak
 #   SESSION_SECRET       kosong = generate acak
 #   DRAMAHITS_BASE_URL   default: URL staging di deploy/vodlocal.env.example
+#   GO_BIN               path ke binary go (untuk sudo dengan secure_path)
 #   SKIP_BUILD=1         jangan build, pakai binary yang sudah ada
 #   DISABLE_NGINX=1      hentikan dan disable nginx (port 80)
 
@@ -40,14 +41,53 @@ log "App dir  : $APP_DIR"
 mkdir -p "$APP_DIR/bin" "$APP_DIR/data"
 
 # 1. Binary
-if [ "${SKIP_BUILD:-0}" != "1" ]; then
+find_go() {
+  local candidate
+  if [ -n "${GO_BIN:-}" ] && [ -x "${GO_BIN}" ]; then
+    printf '%s\n' "$GO_BIN"
+    return 0
+  fi
   if command -v go >/dev/null 2>&1; then
-    log "Build binary Linux"
-    (cd "$ROOT" && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$BINARY" ./cmd/server)
+    command -v go
+    return 0
+  fi
+  if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
+    candidate="$(sudo -u "$SUDO_USER" -H bash -lc 'command -v go' 2>/dev/null | tail -n 1)"
+    if [ -n "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  fi
+  for candidate in /usr/local/go/bin/go /usr/lib/go/bin/go /snap/bin/go; do
+    if [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if [ "${SKIP_BUILD:-0}" != "1" ]; then
+  FOUND_GO="$(find_go || true)"
+  if [ -n "$FOUND_GO" ]; then
+    log "Build binary Linux dengan $FOUND_GO"
+    build_ok=0
+    if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
+      build_dir="$(mktemp -d)"
+      chown "$SUDO_USER" "$build_dir"
+      if (cd "$ROOT" && sudo -u "$SUDO_USER" -H env CGO_ENABLED=0 "$FOUND_GO" build -trimpath -ldflags="-s -w" -o "$build_dir/vodlocal" ./cmd/server); then
+        install -m 0755 "$build_dir/vodlocal" "$BINARY"
+        build_ok=1
+      fi
+      rm -rf "$build_dir"
+    fi
+    if [ "$build_ok" -ne 1 ]; then
+      (cd "$ROOT" && CGO_ENABLED=0 "$FOUND_GO" build -trimpath -ldflags="-s -w" -o "$BINARY" ./cmd/server)
+    fi
   elif [ -x "$BINARY" ]; then
     log "Go tidak tersedia; memakai binary yang sudah ada"
   else
-    die "Go tidak tersedia dan $BINARY belum ada. Build di mesin lain lalu salin ke path tersebut."
+    die "Go tidak tersedia dan $BINARY belum ada. Build di mesin lain lalu salin ke path tersebut, atau set GO_BIN=/path/ke/go."
   fi
 fi
 
