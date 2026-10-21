@@ -34,7 +34,11 @@
   </div>
 </form>
 
-<p class="muted small">{{.Total}} perangkat · halaman {{.Page}} dari {{if .TotalPages}}{{.TotalPages}}{{else}}1{{end}}</p>
+<p class="muted small">
+  {{.Total}} perangkat
+  {{if .Total}}· menampilkan {{.From}}–{{.To}}{{end}}
+  · halaman {{.Page}} dari {{if .TotalPages}}{{.TotalPages}}{{else}}1{{end}}
+</p>
 
 {{if .Devices}}
 <div class="table-wrap">
@@ -50,7 +54,7 @@
         <td>{{if .SeatNumber}}{{.SeatNumber}}{{else}}—{{end}}</td>
         <td class="small">{{if .MACAddress}}{{.MACAddress}}{{else}}—{{end}}</td>
         <td class="small">{{if .IPAddress}}{{.IPAddress}}{{else}}—{{end}}</td>
-        <td>{{.Status}}</td>
+        <td><span class="badge {{.Status}}">{{.Status}}</span></td>
         <td class="nowrap">{{when .LastSeenAt}}</td>
         <td>
           {{if .IsActive}}
@@ -75,12 +79,12 @@
   </table>
 </div>
 
-<div class="pager">
-  {{if .HasPrev}}<a href="?q={{.Q}}&amp;status={{.Status}}&amp;sort={{.Sort}}&amp;per_page={{.PerPage}}&amp;page={{.PrevPage}}">« sebelumnya</a>{{end}}
-  <span class="muted small">halaman {{.Page}}</span>
-  {{if .HasNext}}<a href="?q={{.Q}}&amp;status={{.Status}}&amp;sort={{.Sort}}&amp;per_page={{.PerPage}}&amp;page={{.NextPage}}">berikutnya »</a>{{end}}
+<div class="pager" aria-label="Pagination perangkat">
+  {{if .HasPrev}}<a href="?q={{urlquery .Q}}&amp;status={{urlquery .Status}}&amp;sort={{urlquery .Sort}}&amp;per_page={{.PerPage}}&amp;page={{.PrevPage}}">« sebelumnya</a>{{else}}<span class="muted small">« sebelumnya</span>{{end}}
+  <span class="page-info">halaman {{.Page}} / {{if .TotalPages}}{{.TotalPages}}{{else}}1{{end}}</span>
+  {{if .HasNext}}<a href="?q={{urlquery .Q}}&amp;status={{urlquery .Status}}&amp;sort={{urlquery .Sort}}&amp;per_page={{.PerPage}}&amp;page={{.NextPage}}">berikutnya »</a>{{else}}<span class="muted small">berikutnya »</span>{{end}}
 </div>
 {{else}}
-<p class="muted">Tidak ada perangkat yang cocok dengan filter.</p>
+<p class="muted">Tidak ada perangkat yang cocok dengan filter. <a href="/devices">Reset filter</a></p>
 {{end}}
 {{end}}

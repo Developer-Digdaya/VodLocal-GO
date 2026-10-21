@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 
+	"vodlocal/internal/catalog"
 	"vodlocal/internal/mediafs"
 )
 
@@ -52,18 +54,56 @@ type contentItemView struct {
 	Bytes            int64
 }
 
+// storageFilter adalah filter daftar konten di /storage.
+type storageFilter struct {
+	Query    string
+	Category string
+	Status   string
+}
+
+// where menyusun klausa WHERE untuk generation_items.
+func (f storageFilter) where() (string, []any) {
+	clauses := []string{"1 = 1"}
+	args := make([]any, 0, 4)
+
+	if query := strings.TrimSpace(f.Query); query != "" {
+		pattern := likeContains(query)
+		clauses = append(clauses, `(gi.series_title LIKE ?`+likeEscapeClause+
+			` OR gi.series_external_id LIKE ?`+likeEscapeClause+`)`)
+		args = append(args, pattern, pattern)
+	}
+	if category := strings.TrimSpace(f.Category); category != "" {
+		clauses = append(clauses, "gi.category = ?")
+		args = append(args, category)
+	}
+	if status := strings.TrimSpace(f.Status); status != "" {
+		clauses = append(clauses, "gi.status = ?")
+		args = append(args, status)
+	}
+
+	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
 // storageData adalah data halaman /storage.
 type storageData struct {
 	base
-	// Items adalah daftar konten (series) yang tercatat di generation_items.
+	// pageInfo adalah pagination tabel konten.
+	pageInfo
+	// GenPageInfo adalah pagination tabel generation.
+	GenPageInfo pageInfo
+	Q           string
+	Category    string
+	Status      string
+	// Items adalah konten (series) pada halaman ini.
 	Items []contentItemView
-	// Generations adalah ringkasan batch untuk ditampilkan di bawah tabel
-	// konten; tidak ada tombol hapus per batch lagi.
+	// Generations adalah ringkasan batch pada halaman generation saat ini.
 	Generations []generationView
-	// TotalBytes adalah jumlah ukuran seluruh konten yang tampil.
+	// TotalBytes adalah jumlah ukuran konten pada halaman ini.
 	TotalBytes int64
-	// GenerationCount adalah jumlah batch yang tercatat.
-	GenerationCount int
+	// StorageBytes adalah jumlah total_bytes seluruh generation.
+	StorageBytes int64
+	// GenerationCount adalah jumlah seluruh generation.
+	GenerationCount int64
 	ActiveLabel     string
 }
 
@@ -75,44 +115,109 @@ func (a *Admin) handleStorage(w http.ResponseWriter, r *http.Request) {
 // renderStorage menampilkan daftar konten (beserta ringkasan generation)
 // dengan pesan error opsional.
 func (a *Admin) renderStorage(w http.ResponseWriter, r *http.Request, status int, errMessage string) {
-	items, err := a.listContentItems(r.Context())
+	ctx := r.Context()
+	values := r.URL.Query()
+
+	filter := storageFilter{
+		Query:    normalizeQuery(queryGet(values, "q")),
+		Category: strings.ToLower(strings.TrimSpace(queryGet(values, "category"))),
+		Status:   strings.ToLower(strings.TrimSpace(queryGet(values, "status"))),
+	}
+	if !validStorageCategory(filter.Category) {
+		filter.Category = ""
+	}
+	if !validStorageStatus(filter.Status) {
+		filter.Status = ""
+	}
+
+	page, perPage := parsePage(values)
+	total, err := a.countContentItems(ctx, filter)
+	if err != nil {
+		a.internalError(w, r, err, "Gagal menghitung konten.")
+		return
+	}
+	info := newPageInfo(page, perPage, total)
+
+	items, err := a.listContentItems(ctx, filter, info.PerPage, info.offset())
 	if err != nil {
 		a.internalError(w, r, err, "Gagal membaca daftar konten.")
 		return
 	}
 
-	generations, err := a.listGenerations(r.Context())
+	genPage, genPerPage := parsePageNamed(values, "gen_page", "gen_per_page", 10)
+	genTotal, err := a.countGenerations(ctx)
+	if err != nil {
+		a.internalError(w, r, err, "Gagal menghitung generation.")
+		return
+	}
+	genInfo := newPageInfo(genPage, genPerPage, genTotal)
+	generations, err := a.listGenerations(ctx, genInfo.PerPage, genInfo.offset())
 	if err != nil {
 		a.internalError(w, r, err, "Gagal membaca daftar generation.")
 		return
 	}
 
+	storageBytes, err := a.storageBytes(ctx)
+	if err != nil {
+		a.internalError(w, r, err, "Gagal menghitung ukuran storage.")
+		return
+	}
+
+	active, err := a.activeGenerationView(ctx)
+	if err != nil {
+		a.internalError(w, r, err, "Gagal membaca generation aktif.")
+		return
+	}
+
 	data := storageData{
 		base:            a.base(w, r, "Storage", "storage"),
+		pageInfo:        info,
+		GenPageInfo:     genInfo,
+		Q:               filter.Query,
+		Category:        filter.Category,
+		Status:          filter.Status,
 		Items:           items,
 		Generations:     generations,
-		GenerationCount: len(generations),
+		StorageBytes:    storageBytes,
+		GenerationCount: genTotal,
 	}
-	data.Error = errMessage
+	if active != nil {
+		data.ActiveLabel = active.Label
+	}
 	for _, item := range items {
 		data.TotalBytes += item.Bytes
 	}
-	for _, generation := range generations {
-		if generation.Status == "active" {
-			data.ActiveLabel = generation.Label
-		}
-	}
+	data.Error = errMessage
 
 	a.renderPage(w, r, "storage", data, status)
 }
 
-// listContentItems membaca seluruh konten (satu baris generation_items) beserta
+// validStorageCategory melaporkan kategori yang bisa difilter.
+func validStorageCategory(category string) bool {
+	switch category {
+	case "", catalog.CategoryShort, catalog.CategoryMovie, catalog.CategorySeries:
+		return true
+	default:
+		return false
+	}
+}
+
+// validStorageStatus melaporkan status generation_items yang bisa difilter.
+func validStorageStatus(status string) bool {
+	switch status {
+	case "", "pending", "running", "done", "failed", "skipped":
+		return true
+	default:
+		return false
+	}
+}
+
+// listContentItems membaca satu halaman konten (generation_items) beserta
 // label/status generation dan total ukuran rendition-nya, terbaru lebih dulu.
-//
-// Ukuran dihitung dari renditions milik title pada generation yang sama,
-// sehingga satu konten hanya menampilkan byte yang benar-benar dipakai batch
-// tersebut.
-func (a *Admin) listContentItems(ctx context.Context) ([]contentItemView, error) {
+func (a *Admin) listContentItems(ctx context.Context, filter storageFilter, limit, offset int) ([]contentItemView, error) {
+	where, filterArgs := filter.where()
+	args := append(append([]any{}, filterArgs...), limit, offset)
+
 	rows, err := a.read.QueryContext(ctx, `
 SELECT gi.id, gi.series_title, gi.series_external_id, gi.category, gi.status,
        gi.episodes_done, gi.total_episodes, gi.progress_percent,
@@ -122,15 +227,17 @@ FROM generation_items gi
 JOIN generations g ON g.id = gi.generation_id
 LEFT JOIN titles t ON t.provider_id = gi.provider_id AND t.external_id = gi.series_external_id
 LEFT JOIN playables p ON p.title_id = t.id
-LEFT JOIN renditions r ON r.playable_id = p.id AND r.generation_id = gi.generation_id
+LEFT JOIN renditions r ON r.playable_id = p.id AND r.generation_id = gi.generation_id`+
+		where+`
 GROUP BY gi.id
-ORDER BY g.created_at DESC, gi.id`)
+ORDER BY g.created_at DESC, gi.id
+LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	items := make([]contentItemView, 0, 32)
+	items := make([]contentItemView, 0, limit)
 	for rows.Next() {
 		var item contentItemView
 		if err := rows.Scan(&item.ID, &item.SeriesTitle, &item.SeriesExternalID,
@@ -144,18 +251,28 @@ ORDER BY g.created_at DESC, gi.id`)
 	return items, rows.Err()
 }
 
-// listGenerations membaca seluruh generation, terbaru lebih dulu.
-func (a *Admin) listGenerations(ctx context.Context) ([]generationView, error) {
+// countContentItems menghitung baris yang cocok dengan filter.
+func (a *Admin) countContentItems(ctx context.Context, filter storageFilter) (int64, error) {
+	where, args := filter.where()
+	var total int64
+	err := a.read.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM generation_items gi`+where, args...).Scan(&total)
+	return total, err
+}
+
+// listGenerations membaca satu halaman generation, terbaru lebih dulu.
+func (a *Admin) listGenerations(ctx context.Context, limit, offset int) ([]generationView, error) {
 	rows, err := a.read.QueryContext(ctx, `
 SELECT id, label, status, file_count, total_bytes, created_at, COALESCE(retired_at, '')
 FROM generations
-ORDER BY created_at DESC, id DESC`)
+ORDER BY created_at DESC, id DESC
+LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	generations := make([]generationView, 0, 16)
+	generations := make([]generationView, 0, limit)
 	for rows.Next() {
 		var generation generationView
 		if err := rows.Scan(&generation.ID, &generation.Label, &generation.Status,
@@ -166,6 +283,36 @@ ORDER BY created_at DESC, id DESC`)
 		generations = append(generations, generation)
 	}
 	return generations, rows.Err()
+}
+
+// countGenerations menghitung seluruh generation.
+func (a *Admin) countGenerations(ctx context.Context) (int64, error) {
+	var total int64
+	err := a.read.QueryRowContext(ctx, `SELECT COUNT(*) FROM generations`).Scan(&total)
+	return total, err
+}
+
+// storageBytes menjumlahkan total_bytes seluruh generation.
+func (a *Admin) storageBytes(ctx context.Context) (int64, error) {
+	var total int64
+	err := a.read.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(total_bytes), 0) FROM generations`).Scan(&total)
+	return total, err
+}
+
+// storageReturnURL mempertahankan halaman/filter setelah aksi hapus.
+func storageReturnURL(r *http.Request) string {
+	keys := []string{"q", "category", "status", "page", "per_page", "gen_page", "gen_per_page"}
+	values := url.Values{}
+	for _, key := range keys {
+		if value := strings.TrimSpace(r.FormValue(key)); value != "" {
+			values.Set(key, value)
+		}
+	}
+	if len(values) == 0 {
+		return "/storage"
+	}
+	return "/storage?" + values.Encode()
 }
 
 // generationByID membaca satu generation, atau nil bila tidak ada.
@@ -270,7 +417,7 @@ func (a *Admin) handleStorageDelete(w http.ResponseWriter, r *http.Request) {
 	a.log.Info("admin: generation dihapus",
 		"generation", generation.Label, "status", generation.Status, "username", a.sessionUsername(r))
 	a.flashTo(r, "success", fmt.Sprintf("Generation %s dihapus.", generation.Label))
-	http.Redirect(w, r, "/storage", http.StatusSeeOther)
+	http.Redirect(w, r, storageReturnURL(r), http.StatusSeeOther)
 }
 
 // errUnsafeMediaPath menandai folder series yang, setelah dinormalkan, keluar
@@ -537,7 +684,7 @@ func (a *Admin) handleStorageItemDelete(w http.ResponseWriter, r *http.Request) 
 		"username", a.sessionUsername(r))
 	a.flashTo(r, "success", fmt.Sprintf("Konten %s dihapus dari %s.",
 		item.SeriesTitle, item.GenerationLabel))
-	http.Redirect(w, r, "/storage", http.StatusSeeOther)
+	http.Redirect(w, r, storageReturnURL(r), http.StatusSeeOther)
 }
 
 // isMissingFile melaporkan apakah err berarti berkas/direktori sudah tidak ada.

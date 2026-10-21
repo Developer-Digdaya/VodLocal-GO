@@ -137,7 +137,12 @@ func TestSyncDetailGenerationItems(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		"<h2>Konten</h2>",
-		`<div id="sync-items" data-run-id="1" data-active="0" data-status="completed">`,
+		`id="sync-items"`,
+		`data-run-id="1"`,
+		`data-active="0"`,
+		`data-status="completed"`,
+		`data-page="1"`,
+		`data-per-page="50"`,
 		"Cinta Pertama",
 		"cinta-pertama",
 		"Rahasia Malam",
@@ -254,7 +259,12 @@ func TestSyncItemsHTMLPartial(t *testing.T) {
 		t.Fatalf("fragmen tidak boleh memuat layout (body=%s)", body)
 	}
 	for _, want := range []string{
-		`<div id="sync-items" data-run-id="1" data-active="0" data-status="completed">`,
+		`id="sync-items"`,
+		`data-run-id="1"`,
+		`data-active="0"`,
+		`data-status="completed"`,
+		`data-page="1"`,
+		`data-per-page="50"`,
 		"<div class=\"table-wrap\">",
 		"Cinta Pertama",
 		"Rahasia Malam",
@@ -281,7 +291,8 @@ func TestSyncItemsActiveRun(t *testing.T) {
 		t.Fatalf("status = %d, mau 200 (body=%s)", page.Code, page.Body.String())
 	}
 	body := page.Body.String()
-	if !strings.Contains(body, `<div id="sync-items" data-run-id="6" data-active="1" data-status="running">`) {
+	if !strings.Contains(body, `data-run-id="6"`) || !strings.Contains(body, `data-active="1"`) ||
+		!strings.Contains(body, `data-status="running"`) {
 		t.Fatalf("container item tidak menandai run aktif (body=%s)", body)
 	}
 	for _, want := range []string{"window.setInterval", "/items", "'Accept': 'text/html'"} {
@@ -354,7 +365,8 @@ func TestSyncDetailWithoutGeneration(t *testing.T) {
 	if !strings.Contains(body, "Belum ada item konten") {
 		t.Fatalf("halaman tanpa generation tidak memuat pesan kosong (body=%s)", body)
 	}
-	if !strings.Contains(body, `<div id="sync-items" data-run-id="5" data-active="0" data-status="failed">`) {
+	if !strings.Contains(body, `data-run-id="5"`) || !strings.Contains(body, `data-active="0"`) ||
+		!strings.Contains(body, `data-status="failed"`) {
 		t.Fatalf("container item tidak dirender untuk run tanpa generation (body=%s)", body)
 	}
 

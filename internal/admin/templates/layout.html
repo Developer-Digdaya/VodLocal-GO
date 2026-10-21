@@ -32,6 +32,7 @@ p { margin: .5rem 0; }
 table { width: 100%; border-collapse: collapse; background: #fff; font-size: .88rem; }
 th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #e2e6ea; vertical-align: top; }
 th { background: #eef1f4; font-weight: 600; }
+.table-wrap table.detail-table { min-width: 0; }
 tr:last-child td { border-bottom: 0; }
 .table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 pre { overflow-x: auto; }
@@ -39,6 +40,12 @@ pre { overflow-x: auto; }
 .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .muted { color: #5b6672; }
 .small { font-size: .82rem; }
+.badge { display: inline-block; padding: .1rem .45rem; border-radius: 999px; background: #eef1f4; color: #35414d; font-size: .75rem; font-weight: 600; line-height: 1.5; }
+.badge.done, .badge.completed, .badge.active, .badge.online { background: #e7f6ec; color: #1f6b3a; }
+.badge.failed, .badge.cancelled { background: #fdecec; color: #8a1f1a; }
+.badge.running, .badge.queued, .badge.verifying, .badge.switching, .badge.cleanup, .badge.building { background: #fff6e5; color: #7a5a12; }
+.badge.retired, .badge.disabled, .badge.offline, .badge.skipped { background: #eef1f4; color: #5b6672; }
+.content-item-added { opacity: .72; }
 .flash { background: #e7f6ec; border: 1px solid #b7e2c6; padding: .55rem .8rem; border-radius: .4rem; overflow-wrap: anywhere; }
 .flash.error { background: #fdecec; border-color: #f3c0c0; color: #8a1f1a; }
 .notice { background: #fff6e5; border: 1px solid #f0d59a; padding: .55rem .8rem; border-radius: .4rem; }
@@ -55,7 +62,10 @@ input[type=text]:focus, input[type=password]:focus, input[type=number]:focus, se
 input[type=text], input[type=password], input[type=number], select { font: inherit; padding: .35rem .5rem; border: 1px solid #ccd3db; border-radius: .35rem; background: #fff; }
 label { display: block; font-size: .85rem; margin-bottom: .2rem; }
 .filters { display: flex; gap: .75rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 1rem; }
-.pager { display: flex; gap: .5rem; align-items: center; margin-top: .75rem; font-size: .88rem; }
+.pager { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .75rem; font-size: .88rem; }
+.pager a { display: inline-block; padding: .3rem .7rem; border: 1px solid #ccd3db; border-radius: .35rem; background: #fff; color: #12324f; text-decoration: none; }
+.pager a:hover { background: #eef4fa; }
+.pager .page-info { color: #5b6672; font-size: .82rem; }
 code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
 footer { flex-shrink: 0; margin-top: auto; text-align: center; color: #6b7684; font-size: .8rem; padding: 1rem; }
 progress { width: 100%; height: 1rem; }

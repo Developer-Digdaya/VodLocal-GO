@@ -1,7 +1,7 @@
 {{define "sync_status"}}
 <div id="sync-progress" class="progress-card" data-run-id="{{.Payload.ID}}" data-active="{{if .Active}}1{{else}}0{{end}}">
   <p class="small">
-    <strong>{{.Payload.Status}}</strong>
+    <span class="badge {{.Payload.Status}}">{{.Payload.Status}}</span>
     {{if .Payload.Phase}}<span class="muted">· fase {{.Payload.Phase}}</span>{{end}}
     <span class="muted nowrap">· {{.Payload.ProgressPercent}}%</span>
   </p>

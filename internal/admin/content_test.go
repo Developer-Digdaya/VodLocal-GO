@@ -531,7 +531,8 @@ func TestSyncPageShowsListContent(t *testing.T) {
 		"Simpan pilihan (0)",
 		"Batal",
 		"Remove all batch",
-		"Riwayat 20 run terakhir",
+		"Riwayat",
+		`name="per_page"`,
 		// Tiga tab kategori, satu panel bersama, tanpa data-provider tunggal.
 		`data-category="movie"`,
 		`data-category="series"`,

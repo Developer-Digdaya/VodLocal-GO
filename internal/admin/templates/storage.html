@@ -2,12 +2,52 @@
 <h1>Storage</h1>
 
 <p class="muted">
-  {{len .Items}} konten · total {{bytes .TotalBytes}} · {{.GenerationCount}} generation
+  {{.Total}} konten · {{.GenerationCount}} generation · {{bytes .StorageBytes}} terpakai
+  {{if .ActiveLabel}} · aktif <code>{{.ActiveLabel}}</code>{{end}}
 </p>
 
 <p class="notice">
   Penghapusan dilakukan per konten: satu baris di bawah menghapus satu series beserta seluruh episodenya pada generation tersebut. Konten yang masih punya media di generation lain tidak ikut terhapus.
 </p>
+
+<form class="filters" method="get" action="/storage">
+  <div>
+    <label for="q">Cari konten</label>
+    <input id="q" type="text" name="q" value="{{.Q}}" placeholder="judul atau ID">
+  </div>
+  <div>
+    <label for="category">Kategori</label>
+    <select id="category" name="category">
+      <option value=""{{if eq .Category ""}} selected{{end}}>semua</option>
+      <option value="short"{{if eq .Category "short"}} selected{{end}}>short</option>
+      <option value="movie"{{if eq .Category "movie"}} selected{{end}}>movie</option>
+      <option value="series"{{if eq .Category "series"}} selected{{end}}>series</option>
+    </select>
+  </div>
+  <div>
+    <label for="status">Status</label>
+    <select id="status" name="status">
+      <option value=""{{if eq .Status ""}} selected{{end}}>semua</option>
+      <option value="pending"{{if eq .Status "pending"}} selected{{end}}>pending</option>
+      <option value="running"{{if eq .Status "running"}} selected{{end}}>running</option>
+      <option value="done"{{if eq .Status "done"}} selected{{end}}>done</option>
+      <option value="failed"{{if eq .Status "failed"}} selected{{end}}>failed</option>
+      <option value="skipped"{{if eq .Status "skipped"}} selected{{end}}>skipped</option>
+    </select>
+  </div>
+  <div>
+    <label for="per_page">Per halaman</label>
+    <input id="per_page" type="number" name="per_page" min="1" max="200" value="{{.PerPage}}">
+  </div>
+  <div>
+    <button class="secondary" type="submit">Terapkan</button>
+    <a class="muted small" href="/storage">reset</a>
+  </div>
+</form>
+
+{{if .Total}}
+<p class="muted small">Menampilkan {{.From}}–{{.To}} dari {{.Total}} konten.</p>
+{{end}}
 
 {{if .Items}}
 <div class="table-wrap">
@@ -31,12 +71,12 @@
           {{.SeriesTitle}}
           {{if .SeriesExternalID}}<br><span class="muted small"><code>{{.SeriesExternalID}}</code></span>{{end}}
         </td>
-        <td>{{if .Category}}{{.Category}}{{else}}—{{end}}</td>
+        <td>{{if .Category}}<span class="badge">{{.Category}}</span>{{else}}—{{end}}</td>
         <td class="nowrap">
           <code>{{.GenerationLabel}}</code>
-          <br><span class="muted small">{{.GenerationStatus}}</span>
+          <br><span class="badge {{.GenerationStatus}}">{{.GenerationStatus}}</span>
         </td>
-        <td>{{.Status}}</td>
+        <td><span class="badge {{.Status}}">{{.Status}}</span></td>
         <td class="nowrap">{{.EpisodesDone}}/{{.TotalEpisodes}}</td>
         <td class="nowrap">
           <span class="item-progress"><progress max="100" value="{{.ProgressPercent}}">{{.ProgressPercent}}%</progress></span>
@@ -48,6 +88,13 @@
                 onsubmit="return confirm('Hapus konten ini beserta seluruh episodenya? Tindakan ini tidak bisa dibatalkan.');">
             <input type="hidden" name="_csrf" value="{{$.CSRF}}">
             <input type="hidden" name="confirm" value="DELETE">
+            <input type="hidden" name="q" value="{{$.Q}}">
+            <input type="hidden" name="category" value="{{$.Category}}">
+            <input type="hidden" name="status" value="{{$.Status}}">
+            <input type="hidden" name="page" value="{{$.Page}}">
+            <input type="hidden" name="per_page" value="{{$.PerPage}}">
+            <input type="hidden" name="gen_page" value="{{$.GenPageInfo.Page}}">
+            <input type="hidden" name="gen_per_page" value="{{$.GenPageInfo.PerPage}}">
             <button class="danger" type="submit" title="Hapus konten ini dari generation tersebut">Hapus</button>
           </form>
         </td>
@@ -56,8 +103,27 @@
     </tbody>
   </table>
 </div>
+
+{{if gt .TotalPages 1}}
+<div class="pager" aria-label="Pagination konten">
+  {{if .HasPrev}}
+  <a href="?q={{urlquery .Q}}&amp;category={{urlquery .Category}}&amp;status={{urlquery .Status}}&amp;per_page={{.PerPage}}&amp;page={{.PrevPage}}&amp;gen_page={{.GenPageInfo.Page}}&amp;gen_per_page={{.GenPageInfo.PerPage}}">‹ Sebelumnya</a>
+  {{else}}
+  <span class="muted small">‹ Sebelumnya</span>
+  {{end}}
+  <span class="page-info">Halaman {{.Page}} / {{.TotalPages}}</span>
+  {{if .HasNext}}
+  <a href="?q={{urlquery .Q}}&amp;category={{urlquery .Category}}&amp;status={{urlquery .Status}}&amp;per_page={{.PerPage}}&amp;page={{.NextPage}}&amp;gen_page={{.GenPageInfo.Page}}&amp;gen_per_page={{.GenPageInfo.PerPage}}">Berikutnya ›</a>
+  {{else}}
+  <span class="muted small">Berikutnya ›</span>
+  {{end}}
+</div>
+{{end}}
 {{else}}
-<p class="muted">Belum ada konten.</p>
+<p class="muted">
+  Tidak ada konten{{if .Q}} yang cocok dengan “{{.Q}}”{{end}}.
+  <a href="/storage">Reset filter</a>
+</p>
 {{end}}
 
 <h2>Hapus semua konten</h2>
@@ -72,10 +138,11 @@
 </form>
 
 {{if .Generations}}
-<h2>Generation</h2>
+<h2>Generation ({{.GenerationCount}})</h2>
 <p class="muted small">
   Ringkasan batch yang tercatat. Penghapusan dilakukan per konten di tabel atas, atau seluruhnya lewat "Hapus semua konten".
 </p>
+<p class="muted small">Menampilkan {{.GenPageInfo.From}}–{{.GenPageInfo.To}} dari {{.GenPageInfo.Total}} generation.</p>
 <div class="table-wrap">
   <table>
     <thead>
@@ -85,7 +152,7 @@
     {{range .Generations}}
       <tr>
         <td class="nowrap"><code>{{.Label}}</code></td>
-        <td>{{.Status}}</td>
+        <td><span class="badge {{.Status}}">{{.Status}}</span></td>
         <td class="nowrap">{{bytes .TotalBytes}}<span class="muted small"> ({{.TotalBytes}} B)</span></td>
         <td>{{.FileCount}}</td>
         <td class="nowrap">{{when .CreatedAt}}</td>
@@ -95,5 +162,21 @@
     </tbody>
   </table>
 </div>
+
+{{if gt .GenPageInfo.TotalPages 1}}
+<div class="pager" aria-label="Pagination generation">
+  {{if .GenPageInfo.HasPrev}}
+  <a href="?q={{urlquery .Q}}&amp;category={{urlquery .Category}}&amp;status={{urlquery .Status}}&amp;per_page={{.PerPage}}&amp;page={{.Page}}&amp;gen_page={{.GenPageInfo.PrevPage}}&amp;gen_per_page={{.GenPageInfo.PerPage}}">‹ Sebelumnya</a>
+  {{else}}
+  <span class="muted small">‹ Sebelumnya</span>
+  {{end}}
+  <span class="page-info">Halaman {{.GenPageInfo.Page}} / {{.GenPageInfo.TotalPages}}</span>
+  {{if .GenPageInfo.HasNext}}
+  <a href="?q={{urlquery .Q}}&amp;category={{urlquery .Category}}&amp;status={{urlquery .Status}}&amp;per_page={{.PerPage}}&amp;page={{.Page}}&amp;gen_page={{.GenPageInfo.NextPage}}&amp;gen_per_page={{.GenPageInfo.PerPage}}">Berikutnya ›</a>
+  {{else}}
+  <span class="muted small">Berikutnya ›</span>
+  {{end}}
+</div>
+{{end}}
 {{end}}
 {{end}}

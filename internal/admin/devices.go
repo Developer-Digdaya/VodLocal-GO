@@ -54,6 +54,8 @@ type devicesData struct {
 	HasNext    bool
 	PrevPage   int
 	NextPage   int
+	From       int
+	To         int
 	Devices    []deviceRow
 }
 
@@ -99,7 +101,18 @@ func (a *Admin) devicesData(w http.ResponseWriter, r *http.Request, errMessage s
 		return data, false
 	}
 
-	queryArgs := append(append([]any{}, args...), perPage, (page-1)*perPage)
+	info := newPageInfo(page, perPage, data.Total)
+	data.Page = info.Page
+	data.PerPage = info.PerPage
+	data.TotalPages = info.TotalPages
+	data.HasPrev = info.HasPrev
+	data.HasNext = info.HasNext
+	data.PrevPage = info.PrevPage
+	data.NextPage = info.NextPage
+	data.From = info.From
+	data.To = info.To
+
+	queryArgs := append(append([]any{}, args...), info.PerPage, info.offset())
 	rows, err := a.read.QueryContext(ctx, `
 SELECT id, name, COALESCE(seat_number, ''), COALESCE(mac_address, ''), COALESCE(ip_address, ''),
        is_active, COALESCE(last_seen_at, ''), created_at
@@ -112,7 +125,7 @@ LIMIT ? OFFSET ?`, queryArgs...)
 	}
 	defer func() { _ = rows.Close() }()
 
-	devices := make([]deviceRow, 0, perPage)
+	devices := make([]deviceRow, 0, info.PerPage)
 	for rows.Next() {
 		var (
 			device   deviceRow
@@ -132,17 +145,6 @@ LIMIT ? OFFSET ?`, queryArgs...)
 		return data, false
 	}
 	data.Devices = devices
-
-	if data.Total > 0 {
-		data.TotalPages = int((data.Total + int64(perPage) - 1) / int64(perPage))
-	}
-	data.HasPrev = page > 1
-	data.PrevPage = page - 1
-	if data.PrevPage < 1 {
-		data.PrevPage = 1
-	}
-	data.HasNext = page < data.TotalPages
-	data.NextPage = page + 1
 
 	return data, true
 }

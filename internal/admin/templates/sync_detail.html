@@ -12,7 +12,7 @@
 {{end}}
 
 <div class="table-wrap">
-  <table>
+  <table class="detail-table">
     <tr><th>Status</th><td>{{.Run.Status}}</td></tr>
     <tr><th>Fase</th><td>{{if .Run.Phase}}{{.Run.Phase}}{{else}}—{{end}}</td></tr>
     <tr><th>Pemicu</th><td>{{.Run.Trigger}}{{if and .Run.TriggeredBy (ne .Run.TriggeredBy .Run.Trigger)}} oleh {{.Run.TriggeredBy}}{{end}}</td></tr>
@@ -38,7 +38,13 @@
 
   var runID = progressElement.getAttribute('data-run-id');
   var statusURL = '/sync/' + runID + '/status';
-  var itemsURL = '/sync/' + runID + '/items';
+
+  // Polling mempertahankan halaman tabel konten yang sedang dibuka.
+  var itemsElement = document.getElementById('sync-items');
+  var itemsPage = itemsElement ? (itemsElement.getAttribute('data-page') || '1') : '1';
+  var itemsPerPage = itemsElement ? (itemsElement.getAttribute('data-per-page') || '50') : '50';
+  var itemsURL = '/sync/' + runID + '/items?page=' + encodeURIComponent(itemsPage) +
+    '&per_page=' + encodeURIComponent(itemsPerPage);
 
   // isActive membaca penanda yang dipasang server pada container: "1" berarti
   // run masih berjalan dan polling diteruskan.

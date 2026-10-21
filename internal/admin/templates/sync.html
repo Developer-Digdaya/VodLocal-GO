@@ -9,7 +9,12 @@
 
 <p><button type="button" id="open-content">List Content</button></p>
 
-<h2>Riwayat 20 run terakhir</h2>
+<h2>Riwayat</h2>
+<p class="muted small">
+  {{.Total}} run
+  {{if .Total}}· menampilkan {{.From}}–{{.To}}{{end}}
+  · halaman {{.Page}} dari {{if .TotalPages}}{{.TotalPages}}{{else}}1{{end}}
+</p>
 <form class="filters" method="get" action="/sync">
   <div>
     <label for="q">Cari (ID atau pemicu)</label>
@@ -21,6 +26,10 @@
       <option value="">semua</option>
       {{range .Statuses}}<option value="{{.}}"{{if eq . $.Status}} selected{{end}}>{{.}}</option>{{end}}
     </select>
+  </div>
+  <div>
+    <label for="per_page">Per halaman</label>
+    <input id="per_page" type="number" name="per_page" min="1" max="200" value="{{.PerPage}}">
   </div>
   <div>
     <button class="secondary" type="submit">Terapkan</button>
@@ -38,7 +47,7 @@
     {{range .Runs}}
       <tr>
         <td><a href="/sync/{{.ID}}">#{{.ID}}</a></td>
-        <td>{{.Status}}</td>
+        <td><span class="badge {{.Status}}">{{.Status}}</span></td>
         <td>{{if .Phase}}{{.Phase}}{{else}}—{{end}}</td>
         <td>{{.Trigger}}{{if .TriggeredBy}} <span class="muted small">({{.TriggeredBy}})</span>{{end}}</td>
         <td class="nowrap">{{.RenditionsReady}}/{{.TotalRenditions}} · gagal {{.RenditionsFailed}}</td>
@@ -49,8 +58,27 @@
     </tbody>
   </table>
 </div>
+
+{{if gt .TotalPages 1}}
+<div class="pager" aria-label="Pagination riwayat sinkronisasi">
+  {{if .HasPrev}}
+  <a href="?q={{urlquery .Q}}&amp;status={{urlquery .Status}}&amp;per_page={{.PerPage}}&amp;page={{.PrevPage}}">‹ Sebelumnya</a>
+  {{else}}
+  <span class="muted small">‹ Sebelumnya</span>
+  {{end}}
+  <span class="page-info">Halaman {{.Page}} / {{.TotalPages}}</span>
+  {{if .HasNext}}
+  <a href="?q={{urlquery .Q}}&amp;status={{urlquery .Status}}&amp;per_page={{.PerPage}}&amp;page={{.NextPage}}">Berikutnya ›</a>
+  {{else}}
+  <span class="muted small">Berikutnya ›</span>
+  {{end}}
+</div>
+{{end}}
 {{else}}
-<p class="muted">Tidak ada run yang cocok dengan filter.</p>
+<p class="muted">
+  Tidak ada run yang cocok dengan filter.
+  <a href="/sync">Reset filter</a>
+</p>
 {{end}}
 
 <dialog id="content-dialog" class="modal" aria-labelledby="content-dialog-title">

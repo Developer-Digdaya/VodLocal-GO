@@ -485,14 +485,93 @@ func likeContains(text string) string {
 	return "%" + likeEscaper.Replace(text) + "%"
 }
 
+// pageInfo merangkum satu halaman daftar: nomor halaman yang sudah dijepit ke
+// rentang valid, ukuran halaman, total baris, dan rentang baris yang tampil.
+type pageInfo struct {
+	Page       int
+	PerPage    int
+	Total      int64
+	TotalPages int
+	HasPrev    bool
+	HasNext    bool
+	PrevPage   int
+	NextPage   int
+	From       int
+	To         int
+}
+
+// paginationMeta adalah bentuk pagination pada respons JSON internal admin.
+type paginationMeta struct {
+	Page     int   `json:"page"`
+	PerPage  int   `json:"per_page"`
+	Total    int64 `json:"total"`
+	LastPage int   `json:"last_page"`
+}
+
+// offset mengembalikan offset SQL untuk halaman ini.
+func (p pageInfo) offset() int {
+	if p.Page < 1 {
+		return 0
+	}
+	return (p.Page - 1) * p.PerPage
+}
+
+// newPageInfo menghitung metadata halaman dan menjepit page ke 1..TotalPages.
+// Pemanggil harus memakai Page hasilnya untuk LIMIT/OFFSET, bukan page mentah,
+// supaya permintaan ?page=999 tidak menampilkan halaman kosong.
+func newPageInfo(page, perPage int, total int64) pageInfo {
+	if perPage < 1 {
+		perPage = defaultPerPage
+	}
+	if perPage > maxPerPage {
+		perPage = maxPerPage
+	}
+	if page < 1 {
+		page = 1
+	}
+
+	info := pageInfo{Page: page, PerPage: perPage, Total: total}
+	if total <= 0 {
+		return info
+	}
+
+	info.TotalPages = int((total + int64(perPage) - 1) / int64(perPage))
+	if info.Page > info.TotalPages {
+		info.Page = info.TotalPages
+	}
+	info.HasPrev = info.Page > 1
+	info.HasNext = info.Page < info.TotalPages
+	info.PrevPage = info.Page - 1
+	if info.PrevPage < 1 {
+		info.PrevPage = 1
+	}
+	info.NextPage = info.Page + 1
+	info.From = (info.Page-1)*perPage + 1
+	info.To = info.Page * perPage
+	if info.To > int(total) {
+		info.To = int(total)
+	}
+	return info
+}
+
 // parsePage membaca page dan per_page dengan batas yang aman.
 func parsePage(values map[string][]string) (page, perPage int) {
-	page, perPage = 1, defaultPerPage
-	raw := strings.TrimSpace(queryGet(values, "page"))
+	return parsePageNamed(values, "page", "per_page", defaultPerPage)
+}
+
+// parsePageNamed membaca pasangan kunci page/per_page tertentu. Dipakai halaman
+// yang punya lebih dari satu tabel dengan pagination independen (mis. storage:
+// page untuk konten dan gen_page untuk generation).
+func parsePageNamed(values map[string][]string, pageKey, perPageKey string, defaultPerPageValue int) (page, perPage int) {
+	page, perPage = 1, defaultPerPageValue
+	if perPage < 1 {
+		perPage = defaultPerPage
+	}
+	raw := strings.TrimSpace(queryGet(values, pageKey))
 	if n, err := strconv.Atoi(raw); err == nil && n > 0 {
 		page = n
 	}
-	raw = strings.TrimSpace(queryGet(values, "per_page"))
+	raw = strings.TrimSpace(queryGet(values, perPageKey))
 	if n, err := strconv.Atoi(raw); err == nil && n > 0 {
 		perPage = n
 	}

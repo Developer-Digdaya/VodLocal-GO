@@ -1,10 +1,14 @@
 {{define "generation_items"}}
-<div id="sync-items" data-run-id="{{.RunID}}" data-active="{{if .Active}}1{{else}}0{{end}}" data-status="{{.Status}}">
+<div id="sync-items" data-run-id="{{.RunID}}" data-active="{{if .Active}}1{{else}}0{{end}}"
+     data-status="{{.Status}}" data-page="{{.Page}}" data-per-page="{{.PerPage}}">
   {{if .Items}}
   <p class="small muted">
     <span class="nowrap">{{.Summary.SeriesDone}}/{{.Summary.SeriesTotal}} series selesai</span>
     · <span class="nowrap">{{.Summary.EpisodesDone}}/{{.Summary.EpisodesTotal}} episode selesai</span>
     · <span class="nowrap">{{.Summary.Percent}}% keseluruhan</span>
+    {{if gt .Total 0}}
+    · <span class="nowrap">menampilkan {{.From}}–{{.To}} dari {{.Total}} series</span>
+    {{end}}
   </p>
   <div class="table-wrap">
     <table>
@@ -27,8 +31,8 @@
             {{.SeriesTitle}}
             {{if .SeriesExternalID}}<br><span class="muted small">{{.SeriesExternalID}}</span>{{end}}
           </td>
-          <td>{{if .Category}}{{.Category}}{{else}}—{{end}}</td>
-          <td>{{.Status}}</td>
+          <td>{{if .Category}}<span class="badge">{{.Category}}</span>{{else}}—{{end}}</td>
+          <td><span class="badge {{.Status}}">{{.Status}}</span></td>
           <td class="nowrap">
             {{.EpisodesDone}}/{{.TotalEpisodes}}
             {{if .EpisodesFailed}}<span class="muted small">· gagal {{.EpisodesFailed}}</span>{{end}}
@@ -51,8 +55,24 @@
       </tbody>
     </table>
   </div>
+
+  {{if gt .TotalPages 1}}
+  <div class="pager" aria-label="Pagination konten sinkronisasi">
+    {{if .HasPrev}}
+    <a href="/sync/{{.RunID}}?page={{.PrevPage}}&amp;per_page={{.PerPage}}">‹ Sebelumnya</a>
+    {{else}}
+    <span class="muted small">‹ Sebelumnya</span>
+    {{end}}
+    <span class="page-info">Halaman {{.Page}} / {{.TotalPages}}</span>
+    {{if .HasNext}}
+    <a href="/sync/{{.RunID}}?page={{.NextPage}}&amp;per_page={{.PerPage}}">Berikutnya ›</a>
+    {{else}}
+    <span class="muted small">Berikutnya ›</span>
+    {{end}}
+  </div>
+  {{end}}
   {{else}}
-  <p class="muted">Belum ada item konten</p>
+  <p class="muted">Belum ada item konten.</p>
   {{end}}
 </div>
 {{end}}

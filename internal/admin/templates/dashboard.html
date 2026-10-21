@@ -15,9 +15,10 @@
 {{end}}
 
 <h2>Versi media aktif</h2>
+<p class="small"><a href="/storage">kelola storage</a> · <a href="/sync">riwayat sinkronisasi</a></p>
 {{if .Generation}}
 <div class="table-wrap">
-  <table>
+  <table class="detail-table">
     <tr><th>Label</th><td><code>{{.Generation.Label}}</code></td></tr>
     <tr><th>Status</th><td>{{.Generation.Status}}</td></tr>
     <tr><th>Ukuran</th><td>{{bytes .Generation.TotalBytes}} <span class="muted small">({{.Generation.TotalBytes}} byte)</span></td></tr>
@@ -38,6 +39,7 @@
 </div>
 
 <h2>Perangkat</h2>
+<p class="small"><a href="/devices">kelola perangkat</a></p>
 <div class="grid">
   <div class="card"><div class="muted small">Terdaftar</div><div>{{.Devices.Registered}}</div></div>
   <div class="card"><div class="muted small">Online (5 menit terakhir)</div><div>{{.Devices.Online}}</div></div>
@@ -63,11 +65,12 @@
 </div>
 
 <h2>Sinkronisasi terakhir</h2>
+<p class="small"><a href="/sync">lihat semua riwayat</a></p>
 {{if .LastSync}}
 <div class="table-wrap">
-  <table>
+  <table class="detail-table">
     <tr><th>Run</th><td><a href="/sync/{{.LastSync.ID}}">#{{.LastSync.ID}}</a></td></tr>
-    <tr><th>Status</th><td>{{.LastSync.Status}}{{if .LastSync.Phase}} · {{.LastSync.Phase}}{{end}}</td></tr>
+    <tr><th>Status</th><td><span class="badge {{.LastSync.Status}}">{{.LastSync.Status}}</span>{{if .LastSync.Phase}} · {{.LastSync.Phase}}{{end}}</td></tr>
     <tr><th>Pemicu</th><td>{{.LastSync.Trigger}}{{if and .LastSync.TriggeredBy (ne .LastSync.TriggeredBy .LastSync.Trigger)}} oleh {{.LastSync.TriggeredBy}}{{end}}</td></tr>
     <tr><th>Rendition</th><td>{{.LastSync.RenditionsReady}}/{{.LastSync.TotalRenditions}} siap · {{.LastSync.RenditionsFailed}} gagal</td></tr>
     <tr><th>Mulai</th><td>{{when .LastSync.StartedAt}}</td></tr>
