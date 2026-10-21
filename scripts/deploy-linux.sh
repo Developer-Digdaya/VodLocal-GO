@@ -15,6 +15,7 @@ set -euo pipefail
 #   DRAMAHITS_BASE_URL   default: URL staging di deploy/vodlocal.env.example
 #   GO_BIN               path ke binary go (untuk sudo dengan secure_path)
 #   SKIP_BUILD=1         jangan build, pakai binary yang sudah ada
+#   SKIP_BACKUP=1        jangan backup database sebelum restart
 #   DISABLE_NGINX=1      hentikan dan disable nginx (port 80)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -153,7 +154,7 @@ log "Menyiapkan user vodlocal"
 getent group vodlocal >/dev/null || groupadd --system vodlocal
 id -u vodlocal >/dev/null 2>&1 || useradd --system --gid vodlocal --home-dir "$APP_DIR" --shell /usr/sbin/nologin vodlocal
 
-chown root:root "$APP_DIR" "$BINARY"
+chown root:root "$BINARY"
 chmod 755 "$APP_DIR" "$BINARY"
 chown vodlocal:vodlocal "$APP_DIR/data"
 chmod 755 "$APP_DIR/data"
@@ -165,6 +166,17 @@ if [ "${DISABLE_NGINX:-0}" = "1" ]; then
 fi
 
 systemctl stop vodlocal 2>/dev/null || true
+
+if [ "${SKIP_BACKUP:-0}" != "1" ] && [ -f "$APP_DIR/data/app.db" ]; then
+  backup="$APP_DIR/data/app.db.bak-$(date +%Y%m%d-%H%M%S)"
+  cp -a "$APP_DIR/data/app.db" "$backup"
+  for suffix in -wal -shm; do
+    if [ -f "$APP_DIR/data/app.db$suffix" ]; then
+      cp -a "$APP_DIR/data/app.db$suffix" "$backup$suffix"
+    fi
+  done
+  log "Backup database: $backup"
+fi
 
 APP_ADDR="${VODLOCAL_HTTP_ADDR:-:8080}"
 APP_PORT="${APP_ADDR##*:}"

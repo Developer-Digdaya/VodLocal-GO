@@ -447,10 +447,13 @@ scp bin/vodlocal-linux-amd64 <ssh-user>@<server-ip>:/tmp/vodlocal
 sudo useradd --system --home /var/www/VodLocal --shell /usr/sbin/nologin vodlocal
 sudo mkdir -p /var/www/VodLocal/bin /var/www/VodLocal/data
 sudo mv /tmp/vodlocal /var/www/VodLocal/bin/vodlocal
-sudo chown -R vodlocal:vodlocal /var/www/VodLocal
+sudo chown root:root /var/www/VodLocal/bin/vodlocal
+sudo chown -R vodlocal:vodlocal /var/www/VodLocal/data
 sudo cp deploy/vodlocal.service /etc/systemd/system/vodlocal.service
 sudo cp deploy/vodlocal.env.example /var/www/VodLocal/vodlocal.env
 sudo editor /var/www/VodLocal/vodlocal.env
+sudo chown root:root /var/www/VodLocal/vodlocal.env
+sudo chmod 600 /var/www/VodLocal/vodlocal.env
 sudo systemctl daemon-reload
 sudo systemctl enable --now vodlocal
 sudo journalctl -u vodlocal -f
@@ -464,6 +467,33 @@ service dapat listen di port 80 sebagai non-root.
 ```bash
 curl -fsS http://<server>/health
 curl -fsS http://<server>/ready
+```
+
+### 12.5 Update
+
+Jalankan `git pull` sebagai pemilik repo (bukan root), lalu deploy lagi:
+
+```bash
+cd /var/www/VodLocal   # sesuaikan dengan lokasi clone
+git pull --ff-only
+sudo ./scripts/deploy-linux.sh
+```
+
+Skrip melakukan build ulang, memasang ulang unit systemd, dan restart service.
+Env yang sudah ada tidak ditimpa. Kalau `deploy/vodlocal.env.example` berubah,
+bandingkan dan tambahkan variabel baru secara manual:
+
+```bash
+diff -u deploy/vodlocal.env.example vodlocal.env
+```
+
+Database dibackup otomatis ke `data/app.db.bak-<timestamp>` sebelum restart.
+Untuk melewati backup: `sudo env SKIP_BACKUP=1 ./scripts/deploy-linux.sh`.
+Untuk rollback, checkout commit sebelumnya lalu deploy lagi:
+
+```bash
+git checkout <commit-lama>
+sudo ./scripts/deploy-linux.sh
 ```
 
 ---

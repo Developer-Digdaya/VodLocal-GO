@@ -13,6 +13,7 @@
 # Environment & secrets
 .env
 .env.*
+/vodlocal.env
 
 # Editor / OS
 .vscode/
