@@ -6,8 +6,9 @@
 <title>{{.Title}} · Panel Admin</title>
 <link rel="stylesheet" href="/assets/pico.min.css?v=2.1.1">
 <style>
-:root {
+:root:not([data-theme=dark]) {
   color-scheme: light;
+  --pico-font-size: 100%;
   --pico-primary: #12324f;
   --pico-primary-background: #12324f;
   --pico-primary-border: #12324f;
@@ -27,7 +28,8 @@ header.top a { color: #d7e5f2; text-decoration: none; padding: .35rem .6rem; bor
 header.top a:hover { background: #1c4b75; }
 header.top a.active { background: #1f5c93; color: #fff; }
 header.top .spacer { flex: 1 1 auto; }
-header.top .who { color: #b9d0e4; font-size: .85rem; margin-right: .5rem; }
+header.top .who { color: #b9d0e4; font-size: .85rem; line-height: 1.2; margin: 0; }
+header.top .userbox { display: flex; align-items: center; gap: .6rem; }
 main { flex: 1 0 auto; width: 100%; max-width: 1120px; margin: 1.5rem auto; padding: 0 1rem 3rem; }
 main.auth { max-width: none; min-height: 100vh; min-height: 100dvh; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem 1rem; }
 
@@ -43,7 +45,7 @@ dialog.modal::backdrop { backdrop-filter: none; }
 .auth-card .flash { margin: 0 0 1rem; }
 .auth-card label { font-weight: 600; }
 .auth-card input[type=text], .auth-card input[type=password] { padding: .5rem .6rem; }
-.auth-card button[type=submit] { width: 100%; padding: .55rem .8rem; font-size: .95rem; }
+.auth-card button[type=submit] { width: 100%; height: 2.75rem; padding: 0 .8rem; font-size: .95rem; }
 h1 { font-size: 1.35rem; margin: 0 0 1rem; }
 h2 { font-size: 1rem; margin: 1.6rem 0 .5rem; }
 p { margin: .5rem 0; }
@@ -57,6 +59,9 @@ pre { overflow-x: auto; }
 .card { background: #fff; border: 1px solid #e2e6ea; border-radius: .5rem; padding: 1rem; }
 .card-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .card-grid > * { margin-bottom: 0; }
+.settings-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 900px) { .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px) { .settings-grid { grid-template-columns: 1fr; } }
 .muted { color: #5b6672; }
 .small { font-size: .82rem; }
 .badge { display: inline-block; padding: .1rem .45rem; border-radius: 999px; background: #eef1f4; color: #35414d; font-size: .75rem; font-weight: 600; line-height: 1.5; }
@@ -68,20 +73,26 @@ pre { overflow-x: auto; }
 .flash { background: #e7f6ec; border: 1px solid #b7e2c6; padding: .55rem .8rem; border-radius: .4rem; overflow-wrap: anywhere; }
 .flash.error { background: #fdecec; border-color: #f3c0c0; color: #8a1f1a; }
 .notice { background: #fff6e5; border: 1px solid #f0d59a; padding: .55rem .8rem; border-radius: .4rem; }
-form.inline { display: inline; margin: 0; }
-button { display: inline-block; width: auto; margin: 0; font: inherit; font-size: .85rem; padding: .3rem .7rem; border-radius: .35rem; border: 1px solid #12324f; background: #12324f; color: #fff; cursor: pointer; }
-button[type=submit], button[type=button], button[type=reset] { width: auto; }
+form.inline { display: inline-flex; align-items: center; vertical-align: middle; margin: 0; }
+button { display: inline-flex; align-items: center; justify-content: center; width: auto; height: 2.25rem; min-height: 0; margin: 0; font: inherit; font-size: .85rem; line-height: 1.2; padding: 0 .8rem; border-radius: .35rem; border: 1px solid #12324f; background: #12324f; color: #fff; cursor: pointer; }
+button[type=submit], button[type=button], button[type=reset] { width: auto; height: 2.25rem; min-height: 0; margin: 0; padding: 0 .8rem; line-height: 1.2; }
 button.secondary { background: #fff; color: #12324f; }
 button.danger { border-color: #a3271f; background: #a3271f; }
 button:hover { background: #1c4b75; }
 button.secondary:hover { background: #eef4fa; }
 button.danger:hover { background: #8c211a; }
 button:disabled { opacity: .5; cursor: not-allowed; }
-button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #1f5c93; outline-offset: 2px; }
+button:focus-visible { outline: 2px solid #1f5c93; outline-offset: 2px; }
+input:focus-visible, select:focus-visible { outline: none; }
 input[type=text]:focus, input[type=password]:focus, input[type=number]:focus, select:focus { border-color: #1f5c93; }
-input[type=text], input[type=password], input[type=number], select { font: inherit; width: auto; margin: 0; padding: .35rem .5rem; border: 1px solid #ccd3db; border-radius: .35rem; background-color: #fff; }
+input[type=text], input[type=password], input[type=number], select { font: inherit; width: auto; height: 2.25rem; min-height: 0; margin: 0; padding: 0 .5rem; border: 1px solid #ccd3db; border-radius: .35rem; background-color: #fff; }
 label { display: block; font-size: .85rem; margin-bottom: .2rem; }
-.filters { display: flex; gap: .75rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 1rem; }
+.filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .75rem; align-items: end; margin-bottom: 1rem; }
+.filters > div { min-width: 0; }
+.filters input, .filters select, .filters button { width: 100%; }
+.filters > div:last-child { display: flex; align-items: center; align-self: end; height: 2.25rem; gap: .5rem; }
+.filters > div:last-child button { width: auto; }
+.filters > div:last-child a { line-height: 1.2; }
 .pager { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .75rem; font-size: .88rem; }
 .pager a { display: inline-block; padding: .3rem .7rem; border: 1px solid #ccd3db; border-radius: .35rem; background: #fff; color: #12324f; text-decoration: none; }
 .pager a:hover { background: #eef4fa; }
@@ -93,7 +104,7 @@ progress { width: 100%; height: 1rem; accent-color: #12324f; }
 .item-progress progress { width: 100%; }
 .progress-card { background: #fff; border: 1px solid #e2e6ea; border-radius: .5rem; padding: .8rem 1rem; }
 .narrow { max-width: 420px; }
-.full { width: 100%; }
+input.full { width: 100%; }
 .nowrap { white-space: nowrap; }
 
 /* Dialog modal (modal "List Content" di halaman sync). */
@@ -130,8 +141,8 @@ dialog.modal::backdrop { background: rgba(15, 23, 32, .45); }
   main.auth { padding: 1rem; }
   .auth-card .card { padding: 1.25rem; }
   h1 { font-size: 1.2rem; }
-  .filters { gap: .5rem; }
-  .filters > div { flex: 1 1 100%; }
+  .filters { grid-template-columns: 1fr; gap: .5rem; }
+  .filters > div { flex: none; }
   input[type=text], input[type=password], input[type=number], select { width: 100%; }
   button { padding: .45rem .8rem; }
   .pager { flex-wrap: wrap; }
@@ -162,11 +173,13 @@ dialog.modal::backdrop { background: rgba(15, 23, 32, .45); }
   <a href="/storage"{{if eq .Nav "storage"}} class="active"{{end}}>Storage</a>
   <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}>Pengaturan</a>
   <span class="spacer"></span>
-  <span class="who">{{.User}} ({{.Role}})</span>
-  <form class="inline" method="post" action="/logout">
-    <input type="hidden" name="_csrf" value="{{.CSRF}}">
-    <button class="secondary" type="submit">Keluar</button>
-  </form>
+  <div class="userbox">
+    <span class="who">{{.User}} ({{.Role}})</span>
+    <form class="inline" method="post" action="/logout">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <button class="secondary" type="submit">Keluar</button>
+    </form>
+  </div>
 </header>
 {{end}}
 <main{{if not .User}} class="auth"{{end}}>

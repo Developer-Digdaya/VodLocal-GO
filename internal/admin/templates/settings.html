@@ -5,7 +5,7 @@
   <input type="hidden" name="_csrf" value="{{.CSRF}}">
   <fieldset>
   <legend>Konfigurasi</legend>
-  <div class="card-grid">
+  <div class="card-grid settings-grid">
     {{range .Fields}}
     <div>
       {{if eq .Kind "bool"}}
