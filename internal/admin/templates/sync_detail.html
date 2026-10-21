@@ -5,7 +5,7 @@
 {{template "sync_status" .StatusView}}
 
 {{if .Run.Active}}
-<form method="post" action="/sync/{{.Run.ID}}/cancel">
+<form class="sync-actions" method="post" action="/sync/{{.Run.ID}}/cancel">
   <input type="hidden" name="_csrf" value="{{.CSRF}}">
   <button class="danger" type="submit">Batalkan sinkronisasi</button>
 </form>
