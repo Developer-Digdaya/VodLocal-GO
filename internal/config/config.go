@@ -39,6 +39,7 @@ const (
 	envTelegramToken           = envPrefix + "TELEGRAM_TOKEN"
 	envTelegramChatID          = envPrefix + "TELEGRAM_CHAT_ID"
 	envDramahitsBaseURL        = envPrefix + "DRAMAHITS_BASE_URL"
+	envDensgoBaseURL           = envPrefix + "DENSGO_BASE_URL"
 	envIngestMaxEpisodes       = envPrefix + "INGEST_MAX_EPISODES"
 	envReadHeaderTimeout       = envPrefix + "READ_HEADER_TIMEOUT"
 	envIdleTimeout             = envPrefix + "IDLE_TIMEOUT"
@@ -58,6 +59,7 @@ const (
 	defaultStorageWarnPercent      = 80
 	defaultStorageBlockSyncPercent = 90
 	defaultSessionSecret           = "dev-insecure-secret"
+	defaultDensgoBaseURL           = "https://pp.dens.tv:777/index.php/v3070/adps_list_movies_v1"
 	defaultIngestMaxEpisodes       = 0
 	defaultReadHeaderTimeout       = 10 * time.Second
 	defaultIdleTimeout             = 120 * time.Second
@@ -99,6 +101,7 @@ type Config struct {
 	TelegramToken           string
 	TelegramChatID          string
 	DramahitsBaseURL        string
+	DensgoBaseURL           string
 	IngestMaxEpisodes       int
 	ReadHeaderTimeout       time.Duration
 	IdleTimeout             time.Duration
@@ -135,6 +138,7 @@ func LoadFrom(getenv func(string) string) (Config, error) {
 		TelegramToken:           strings.TrimSpace(readString(getenv, envTelegramToken, "")),
 		TelegramChatID:          strings.TrimSpace(readString(getenv, envTelegramChatID, "")),
 		DramahitsBaseURL:        strings.TrimSpace(readString(getenv, envDramahitsBaseURL, "")),
+		DensgoBaseURL:           strings.TrimSpace(readString(getenv, envDensgoBaseURL, defaultDensgoBaseURL)),
 		IngestMaxEpisodes:       mustInt(&errs, getenv, envIngestMaxEpisodes, defaultIngestMaxEpisodes),
 		ReadHeaderTimeout:       mustDuration(&errs, getenv, envReadHeaderTimeout, defaultReadHeaderTimeout),
 		IdleTimeout:             mustDuration(&errs, getenv, envIdleTimeout, defaultIdleTimeout),
@@ -258,6 +262,9 @@ func validate(cfg Config) error {
 		errs = append(errs, fmt.Errorf("%s: wajib diisi", envDramahitsBaseURL))
 	} else if u, err := url.Parse(cfg.DramahitsBaseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		errs = append(errs, fmt.Errorf("%s: harus URL http/https yang valid", envDramahitsBaseURL))
+	}
+	if u, err := url.Parse(cfg.DensgoBaseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		errs = append(errs, fmt.Errorf("%s: harus URL http/https yang valid", envDensgoBaseURL))
 	}
 	if cfg.IngestMaxEpisodes < 0 {
 		errs = append(errs, fmt.Errorf("%s: tidak boleh negatif, didapat %d", envIngestMaxEpisodes, cfg.IngestMaxEpisodes))

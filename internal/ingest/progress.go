@@ -64,12 +64,18 @@ type episodeResult struct {
 // setiap selection pada run ini. Penyisipan idempotent
 // (ON CONFLICT DO NOTHING), jadi mengulang run tidak menimpa progres yang sudah
 // ada. Kegagalan penyisipan hanya dicatat di log.
-func (s *Service) seedGenerationItems(ctx context.Context, st *runState, provID int64) {
+func (s *Service) seedGenerationItems(ctx context.Context, st *runState, provIDs map[string]int64) {
 	ctx, cancel := s.sqlCtx(ctx)
 	defer cancel()
 
 	now := s.stamp()
 	for _, series := range st.selections {
+		provID, ok := provIDs[normalizeProvider(series.Provider)]
+		if !ok {
+			s.log.Warn("selection tanpa provider id, generation item dilewati",
+				"generation_id", st.genID, "provider", series.Provider)
+			continue
+		}
 		external := seriesExternalID(series)
 		if external == "" {
 			s.log.Warn("selection tanpa slug/id, generation item dilewati",

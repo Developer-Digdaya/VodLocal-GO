@@ -13,6 +13,8 @@ set -euo pipefail
 #   ADMIN_PASSWORD       kosong = generate acak
 #   SESSION_SECRET       kosong = generate acak
 #   DRAMAHITS_BASE_URL   default: URL staging di deploy/vodlocal.env.example
+#   DENSGO_BASE_URL      default: URL publik Densgo (movie & series); lihat
+#                        deploy/vodlocal.env.example
 #   GO_BIN               path ke binary go (untuk sudo dengan secure_path)
 #   SKIP_BUILD=1         jangan build, pakai binary yang sudah ada
 #   SKIP_BACKUP=1        jangan backup database sebelum restart
@@ -23,6 +25,10 @@ APP_DIR="${APP_DIR:-$ROOT}"
 BINARY="$APP_DIR/bin/vodlocal"
 ENV_FILE="$APP_DIR/vodlocal.env"
 SERVICE_FILE="/etc/systemd/system/vodlocal.service"
+
+# Default URL publik Densgo (movie & series). Nilai env yang sudah ada tidak diubah;
+# variabel ini hanya dipakai saat env baru dibuat atau saat baris Densgo belum ada.
+DENSGO_BASE_URL="${DENSGO_BASE_URL:-https://pp.dens.tv:777/index.php/v3070/adps_list_movies_v1}"
 
 log() { printf '\n==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -101,7 +107,15 @@ chmod 755 "$BINARY"
 # 2. Environment
 GENERATED_PASSWORD=0
 if [ -f "$ENV_FILE" ]; then
-  log "Env sudah ada: $ENV_FILE (tidak ditimpa)"
+  log "Env sudah ada: $ENV_FILE (nilai tidak ditimpa)"
+  # Upgrade dari versi lama: pastikan variabel Densgo ada tanpa mengubah nilai lain.
+  if ! grep -q '^VODLOCAL_DENSGO_BASE_URL=' "$ENV_FILE"; then
+    {
+      printf '\n# Ditambahkan otomatis oleh deploy-linux.sh untuk provider Densgo (movie & series).\n'
+      printf 'VODLOCAL_DENSGO_BASE_URL=%s\n' "$DENSGO_BASE_URL"
+    } >> "$ENV_FILE"
+    log "Menambahkan VODLOCAL_DENSGO_BASE_URL ke env yang sudah ada"
+  fi
 else
   log "Membuat env: $ENV_FILE"
   SESSION_SECRET="${SESSION_SECRET:-$(openssl rand -hex 32)}"
@@ -117,11 +131,17 @@ else
   DRAMAHITS_BASE_URL="${DRAMAHITS_BASE_URL:-https://stage-microdrama.digdaya.co.id/api/v1}"
 
   sed -e "s#/var/www/VodLocal#$APP_DIR#g" \
+      -e "s#^VODLOCAL_DENSGO_BASE_URL=.*#VODLOCAL_DENSGO_BASE_URL=$DENSGO_BASE_URL#" \
       -e "/^VODLOCAL_SESSION_SECRET=/d" \
       -e "/^VODLOCAL_ADMIN_USER=/d" \
       -e "/^VODLOCAL_ADMIN_PASSWORD=/d" \
       -e "/^VODLOCAL_DRAMAHITS_BASE_URL=/d" \
       "$ROOT/deploy/vodlocal.env.example" > "$ENV_FILE"
+
+  # Jaga-jaga bila contoh env tidak lagi memuat baris Densgo.
+  if ! grep -q '^VODLOCAL_DENSGO_BASE_URL=' "$ENV_FILE"; then
+    printf 'VODLOCAL_DENSGO_BASE_URL=%s\n' "$DENSGO_BASE_URL" >> "$ENV_FILE"
+  fi
 
   {
     printf 'VODLOCAL_SESSION_SECRET=%s\n' "$SESSION_SECRET"

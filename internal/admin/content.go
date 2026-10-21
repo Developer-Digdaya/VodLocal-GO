@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -20,14 +21,19 @@ import (
 
 // Provider dan kategori yang dilayani modal "List Content".
 //
-// Tab VOD (Densgo) belum tersedia sehingga panel hanya melayani daftar series
-// Dramahits, yang berkategori short.
+// Modal punya tiga tab — Movie (Densgo), Series (Densgo), dan Short
+// (Dramahits) — sehingga satu provider bisa muncul pada lebih dari satu
+// kategori.
 const (
 	// providerDramahits adalah kode provider untuk kategori short.
 	providerDramahits = "dramahits"
-	// providerDensgo adalah kode provider untuk kategori VOD (belum tersedia).
+	// providerDensgo adalah kode provider untuk kategori movie dan series.
 	providerDensgo = "densgo"
-	// categoryShort adalah kategori default daftar series pada modal.
+	// categoryMovie adalah kategori film Densgo dan tab bawaan modal.
+	categoryMovie = catalog.CategoryMovie
+	// categorySeries adalah kategori serial Densgo.
+	categorySeries = catalog.CategorySeries
+	// categoryShort adalah kategori Dramahits.
 	categoryShort = catalog.CategoryShort
 )
 
@@ -36,13 +42,22 @@ const (
 // halaman) sehingga beberapa halaman yang dipilih bersamaan tetap terlayani.
 const maxCachedSeries = 2000
 
-// SeriesLister membaca satu halaman daftar series dari provider.
+// maxMissingSelections membatasi jumlah pilihan bermasalah yang disebut pada
+// pesan 422 agar halaman tetap terbaca saat pengguna memilih banyak item.
+const maxMissingSelections = 5
+
+// SeriesLister membaca satu halaman daftar konten dari provider untuk satu
+// kategori.
 //
-// Implementasi konkret berada di luar paket ini (klien provider Dramahits);
-// panel hanya membutuhkan kontrak ini agar bisa diuji dengan stub.
+// Implementasi konkretnya adalah catalog.SourceSet yang dipasang server:
+// SourceSet memilih catalog.Source berdasarkan kategori lalu memanggil
+// ListSeries-nya. Panel hanya membutuhkan kontrak ini agar bisa diuji dengan
+// stub.
 type SeriesLister interface {
-	// ListSeries mengembalikan halaman page (1-based) beserta metadatanya.
-	ListSeries(ctx context.Context, page int) (catalog.SeriesPage, error)
+	// ListSeries mengembalikan halaman page (1-based) pada kategori category
+	// (catalog.CategoryMovie, CategorySeries, atau CategoryShort) beserta
+	// metadatanya.
+	ListSeries(ctx context.Context, category string, page int) (catalog.SeriesPage, error)
 }
 
 // IngestStarter mengantrekan series pilihan pengguna ke worker ingest.
@@ -54,14 +69,20 @@ type IngestStarter interface {
 	Start(ctx context.Context, selections []catalog.Series) (int64, error)
 }
 
-// contentCache adalah cache in-memory slug→series yang diisi setiap kali satu
-// halaman daftar series diambil.
+// contentCache adalah cache kunci konten→series yang diisi setiap kali satu
+// halaman daftar konten diambil.
 //
-// Formulir hanya mengirim slug, jadi data lengkap series (judul, poster,
-// episode) harus bisa ditemukan kembali saat submit. Cache diperbarui pada
-// setiap pengambilan halaman: entri untuk series yang muncul kembali diganti
-// data terbarunya, sementara entri halaman lain dipertahankan supaya pilihan
-// yang dicentang di halaman berbeda tetap bisa disimpan.
+// Kunci cache memuat provider dan kategori, bukan slug saja: Densgo memakai ID
+// provider sebagai slug untuk movie maupun series, sehingga slug yang sama bisa
+// menunjuk konten berbeda, dan pilihan pengguna boleh mencampur beberapa tab.
+// Kunci disusun lewat contentKey (provider + kategori + slug).
+//
+// Formulir hanya mengirim identitas pilihan, jadi data lengkap konten (judul,
+// poster, jumlah episode) harus bisa ditemukan kembali saat submit. Cache
+// diperbarui pada setiap pengambilan halaman: entri untuk konten yang muncul
+// kembali diganti data terbarunya, sementara entri halaman/tab lain
+// dipertahankan supaya pilihan yang dicentang di halaman berbeda tetap bisa
+// disimpan.
 type contentCache struct {
 	mu    sync.Mutex
 	items map[string]catalog.Series
@@ -73,8 +94,19 @@ func newContentCache() *contentCache {
 	return &contentCache{items: make(map[string]catalog.Series)}
 }
 
-// refresh memasukkan seluruh series satu halaman ke cache, mengganti entri
+// contentKey menyusun kunci cache/lookup dari provider, kategori, dan slug.
+//
+// Pemisah NUL dipakai karena tidak mungkin muncul pada kode provider, kategori,
+// maupun slug sehingga kunci tidak ambigu.
+func contentKey(provider, category, slug string) string {
+	return strings.TrimSpace(provider) + "\x00" + strings.TrimSpace(category) + "\x00" + strings.TrimSpace(slug)
+}
+
+// refresh memasukkan seluruh konten satu halaman ke cache, mengganti entri
 // lama dengan data terbaru, lalu membuang entri tertua bila melewati batas.
+//
+// Entri tanpa provider, kategori, atau slug dilewati karena tidak bisa
+// diresolusi kembali saat formulir dikirim.
 func (c *contentCache) refresh(items []catalog.Series) {
 	if c == nil {
 		return
@@ -87,14 +119,16 @@ func (c *contentCache) refresh(items []catalog.Series) {
 		c.items = make(map[string]catalog.Series, len(items))
 	}
 	for _, item := range items {
-		slug := strings.TrimSpace(item.Slug)
-		if slug == "" {
+		if strings.TrimSpace(item.Provider) == "" ||
+			strings.TrimSpace(item.Category) == "" ||
+			strings.TrimSpace(item.Slug) == "" {
 			continue
 		}
-		if _, seen := c.items[slug]; !seen {
-			c.order = append(c.order, slug)
+		key := contentKey(item.Provider, item.Category, item.Slug)
+		if _, seen := c.items[key]; !seen {
+			c.order = append(c.order, key)
 		}
-		c.items[slug] = item
+		c.items[key] = item
 	}
 
 	for len(c.order) > maxCachedSeries {
@@ -104,8 +138,9 @@ func (c *contentCache) refresh(items []catalog.Series) {
 	}
 }
 
-// lookup mengembalikan series dengan slug tersebut beserta status ditemukannya.
-func (c *contentCache) lookup(slug string) (catalog.Series, bool) {
+// lookup mengembalikan konten dengan provider, kategori, dan slug tersebut
+// beserta status ditemukannya.
+func (c *contentCache) lookup(provider, category, slug string) (catalog.Series, bool) {
 	if c == nil {
 		return catalog.Series{}, false
 	}
@@ -113,7 +148,7 @@ func (c *contentCache) lookup(slug string) (catalog.Series, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	item, ok := c.items[strings.TrimSpace(slug)]
+	item, ok := c.items[contentKey(provider, category, slug)]
 	return item, ok
 }
 
@@ -129,7 +164,7 @@ func (c *contentCache) size() int {
 	return len(c.items)
 }
 
-// contentItem adalah satu seri pada respons GET /content/short.
+// contentItem adalah satu konten pada respons GET /content.
 type contentItem struct {
 	Provider     string   `json:"provider"`
 	Category     string   `json:"category"`
@@ -143,12 +178,12 @@ type contentItem struct {
 	AgeRating    string   `json:"age_rating"`
 	Genres       []string `json:"genres"`
 	PublishedAt  string   `json:"published_at"`
-	// AlreadyAdded menandai series yang sudah punya rendition di database,
+	// AlreadyAdded menandai konten yang sudah punya rendition di database,
 	// sehingga modal tidak menawarkannya untuk dipilih (dan di-ingest) lagi.
 	AlreadyAdded bool `json:"already_added"`
 }
 
-// contentMeta adalah bagian meta pada respons GET /content/short.
+// contentMeta adalah bagian meta pada respons GET /content.
 type contentMeta struct {
 	Page     int `json:"page"`
 	PerPage  int `json:"per_page"`
@@ -156,24 +191,41 @@ type contentMeta struct {
 	LastPage int `json:"last_page"`
 }
 
-// contentPage adalah bentuk data pada respons GET /content/short.
+// contentPage adalah bentuk data pada respons GET /content.
 type contentPage struct {
 	Items []contentItem `json:"items"`
 	Meta  contentMeta   `json:"meta"`
 }
 
-// newContentItem menormalkan satu catalog.Series untuk JSON: provider/kategori
-// diisi bila kosong dan genres tidak pernah null.
-func newContentItem(series catalog.Series, provider string) contentItem {
-	itemProvider := strings.TrimSpace(series.Provider)
-	if itemProvider == "" {
-		itemProvider = provider
+// normalizeSeries mengisi Provider dan Category yang kosong sesuai kategori
+// sumber: dramahits/short untuk short, densgo/movie untuk movie, dan
+// densgo/series untuk series. Nilai yang sudah diisi provider dibiarkan apa
+// adanya.
+func normalizeSeries(series catalog.Series, category string) catalog.Series {
+	if strings.TrimSpace(series.Provider) == "" {
+		series.Provider = defaultProvider(category)
 	}
-	category := strings.TrimSpace(series.Category)
-	if category == "" {
-		category = categoryShort
+	if strings.TrimSpace(series.Category) == "" {
+		series.Category = category
 	}
+	return series
+}
 
+// defaultProvider mengembalikan kode provider bawaan sebuah kategori.
+func defaultProvider(category string) string {
+	switch category {
+	case categoryMovie, categorySeries:
+		return providerDensgo
+	case categoryShort:
+		return providerDramahits
+	default:
+		return providerDramahits
+	}
+}
+
+// newContentItem menormalkan satu catalog.Series (yang sudah lewat
+// normalizeSeries) untuk JSON: genres tidak pernah null.
+func newContentItem(series catalog.Series) contentItem {
 	genres := make([]string, 0, len(series.Genres))
 	for _, genre := range series.Genres {
 		if trimmed := strings.TrimSpace(genre); trimmed != "" {
@@ -182,8 +234,8 @@ func newContentItem(series catalog.Series, provider string) contentItem {
 	}
 
 	return contentItem{
-		Provider:     itemProvider,
-		Category:     category,
+		Provider:     strings.TrimSpace(series.Provider),
+		Category:     strings.TrimSpace(series.Category),
 		ID:           series.ID,
 		Slug:         series.Slug,
 		Title:        series.Title,
@@ -309,18 +361,49 @@ func (a *Admin) markAlreadyAdded(ctx context.Context, items []contentItem) {
 	}
 }
 
-// handleContentShort melayani GET /content/short?page=N.
+// handleContent melayani GET /content?category=movie|series|short&page=N.
 //
 // Handler selalu menjawab JSON envelope karena endpoint ini hanya dipanggil
 // JavaScript modal "List Content". Setiap halaman yang berhasil diambil
-// memperbarui cache slug agar POST /content/select bisa meresolusi pilihan.
+// memperbarui cache konten agar POST /content/select bisa meresolusi pilihan.
+func (a *Admin) handleContent(w http.ResponseWriter, r *http.Request) {
+	a.serveContent(w, r, "")
+}
+
+// handleContentShort melayani GET /content/short?page=N.
+//
+// Endpoint lama ini dipertahankan sebagai pembungkus supaya pemanggil versi
+// sebelumnya tetap bekerja; perilakunya sama dengan
+// GET /content?category=short.
 func (a *Admin) handleContentShort(w http.ResponseWriter, r *http.Request) {
+	a.serveContent(w, r, categoryShort)
+}
+
+// serveContent menjawab satu halaman daftar konten sebagai JSON envelope.
+//
+// category kosong berarti kategori dibaca dari query (bawaan movie); nilai
+// tidak kosong memaksa kategori tersebut (dipakai handleContentShort).
+func (a *Admin) serveContent(w http.ResponseWriter, r *http.Request, category string) {
 	w.Header().Set("Cache-Control", "no-store")
 
 	if a.lister == nil {
 		response.ErrorMsg(w, response.CodeServiceUnavailable,
 			"Daftar konten tidak tersedia pada server ini.")
 		return
+	}
+
+	if category == "" {
+		raw := normalizeCategory(queryGet(r.URL.Query(), "category"))
+		switch {
+		case raw == "":
+			category = categoryMovie
+		case validCategory(raw):
+			category = raw
+		default:
+			response.ErrorMsg(w, response.CodeValidationError, fmt.Sprintf(
+				"Kategori %q tidak dikenal; gunakan movie, series, atau short.", raw))
+			return
+		}
 	}
 
 	page := 1
@@ -330,19 +413,26 @@ func (a *Admin) handleContentShort(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := a.lister.ListSeries(r.Context(), page)
+	result, err := a.lister.ListSeries(r.Context(), category, page)
 	if err != nil {
-		a.log.Error("admin: gagal mengambil daftar series",
-			"provider", providerDramahits, "page", page, "err", err)
-		response.ErrorMsg(w, contentErrorCode(err), "Gagal mengambil daftar series dari penyedia.")
+		a.log.Error("admin: gagal mengambil daftar konten",
+			"category", category, "page", page, "err", err)
+		response.ErrorMsg(w, contentErrorCode(err), "Gagal mengambil daftar konten dari penyedia.")
 		return
+	}
+
+	// Provider/kategori dilengkapi lebih dulu supaya cache dan JSON memakai
+	// identitas yang sama (Densgo movie dan series boleh berbagi slug).
+	seriesItems := make([]catalog.Series, 0, len(result.Items))
+	for _, series := range result.Items {
+		seriesItems = append(seriesItems, normalizeSeries(series, category))
 	}
 
 	// Cache hanya diperbarui setelah data benar-benar diterima, sehingga
 	// kegagalan sementara tidak menghapus pilihan yang sudah dibuat.
-	a.content.refresh(result.Items)
+	a.content.refresh(seriesItems)
 	a.log.Debug("admin: cache konten diperbarui",
-		"provider", providerDramahits, "page", page, "cached", a.content.size())
+		"category", category, "page", page, "cached", a.content.size())
 
 	meta := contentMeta{
 		Page:     result.Page,
@@ -360,16 +450,35 @@ func (a *Admin) handleContentShort(w http.ResponseWriter, r *http.Request) {
 		meta.PerPage = len(result.Items)
 	}
 
-	items := make([]contentItem, 0, len(result.Items))
-	for _, series := range result.Items {
-		items = append(items, newContentItem(series, providerDramahits))
+	items := make([]contentItem, 0, len(seriesItems))
+	for _, series := range seriesItems {
+		items = append(items, newContentItem(series))
 	}
 
-	// Tandai series yang sudah ada di database agar modal tidak menawarkannya
+	// Tandai konten yang sudah ada di database agar modal tidak menawarkannya
 	// untuk dipilih lagi. Satu query untuk seluruh slug halaman.
 	a.markAlreadyAdded(r.Context(), items)
 
 	response.Success(w, contentPage{Items: items, Meta: meta})
+}
+
+// normalizeCategory merapikan nilai kategori dari query atau formulir.
+//
+// Nilai kosong dikembalikan sebagai string kosong agar pemanggil bisa memakai
+// bawaannya sendiri.
+func normalizeCategory(raw string) string {
+	return strings.ToLower(strings.TrimSpace(raw))
+}
+
+// validCategory melaporkan apakah category termasuk kategori yang dilayani
+// modal "List Content".
+func validCategory(category string) bool {
+	switch category {
+	case categoryMovie, categorySeries, categoryShort:
+		return true
+	default:
+		return false
+	}
 }
 
 // contentErrorCode memetakan kegagalan lister ke kode envelope yang sesuai.
@@ -388,11 +497,84 @@ func contentErrorCode(err error) int {
 	return response.CodeUpstreamUnavailable
 }
 
+// contentSelection adalah satu entri field "selections" pada POST
+// /content/select. Modal mengirim seluruh pilihan sebagai satu field JSON:
+//
+//	[{"provider":"densgo","category":"movie","slug":"<movie-id>"}]
+type contentSelection struct {
+	Provider string `json:"provider"`
+	Category string `json:"category"`
+	Slug     string `json:"slug"`
+}
+
+// normalized melengkapi provider/kategori yang kosong pada satu pilihan.
+//
+// Pilihan tanpa kategori dianggap movie bila providernya Densgo dan short bila
+// bukan (Dramahits), sehingga formulir versi lama — yang hanya mengirim
+// provider + slug — tetap bekerja. Pilihan tanpa provider memakai provider
+// bawaan kategorinya.
+func (s contentSelection) normalized() (provider, category, slug string) {
+	provider = strings.TrimSpace(s.Provider)
+	category = normalizeCategory(s.Category)
+	slug = strings.TrimSpace(s.Slug)
+
+	if category == "" {
+		if strings.EqualFold(provider, providerDensgo) {
+			category = categoryMovie
+		} else {
+			category = categoryShort
+		}
+	}
+	if provider == "" {
+		provider = defaultProvider(category)
+	}
+	return provider, category, slug
+}
+
+// parseSelectionJSON mem-parse field "selections" (array JSON). Field kosong
+// berarti formulir versi lama, jadi tidak ada pilihan yang dihasilkan.
+func parseSelectionJSON(raw string) ([]contentSelection, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+
+	var selections []contentSelection
+	if err := json.Unmarshal([]byte(raw), &selections); err != nil {
+		return nil, err
+	}
+	return selections, nil
+}
+
+// legacySelections menyusun pilihan dari formulir versi lama: field provider
+// (opsional) plus slug berulang. Kategori tidak dikirim formulir lama sehingga
+// contentSelection.normalized yang menentukannya.
+func legacySelections(r *http.Request) []contentSelection {
+	provider := strings.TrimSpace(r.PostFormValue("provider"))
+	category := normalizeCategory(r.PostFormValue("category"))
+
+	slugs := uniqueSlugs(r.PostForm["slug"])
+	if len(slugs) == 0 {
+		return nil
+	}
+
+	selections := make([]contentSelection, 0, len(slugs))
+	for _, slug := range slugs {
+		selections = append(selections, contentSelection{Provider: provider, Category: category, Slug: slug})
+	}
+	return selections
+}
+
 // handleContentSelect melayani POST /content/select.
 //
-// Formulir membawa provider dan slug berulang; slug diresolusi dari cache lalu
-// diteruskan ke worker ingest. Sukses mengalihkan (303) ke /sync dengan flash
-// berisi jumlah series dan ID run.
+// Formulir membawa field "selections" berisi JSON pilihan (provider, kategori,
+// slug). Formulir versi lama yang hanya mengirim provider + slug berulang tetap
+// diterima. Setiap pilihan diresolusi dari cache berdasarkan
+// provider+kategori+slug, lalu diteruskan ke worker ingest. Sukses mengalihkan
+// (303) ke /sync dengan flash berisi jumlah konten dan ID run.
+//
+// Pilihan lintas provider sengaja tidak ditolak di sini: ingest yang menentukan
+// dukungannya.
 func (a *Admin) handleContentSelect(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		a.renderError(w, r, http.StatusBadRequest, "Formulir tidak dapat dibaca.")
@@ -405,46 +587,66 @@ func (a *Admin) handleContentSelect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider := strings.TrimSpace(r.PostFormValue("provider"))
-	if provider == "" {
-		provider = providerDramahits
-	}
-	if provider == providerDensgo {
+	selections, err := parseSelectionJSON(r.PostFormValue("selections"))
+	if err != nil {
+		a.log.Warn("admin: field selections tidak dapat dibaca", "err", err)
 		a.renderContentMessage(w, r, http.StatusUnprocessableEntity,
-			"Densgo belum tersedia; hanya series Dramahits yang bisa diantrekan.")
+			"Format pilihan konten tidak dapat dibaca. Muat ulang daftar lalu pilih kembali.")
+		return
+	}
+	if len(selections) == 0 {
+		selections = legacySelections(r)
+	}
+	if len(selections) == 0 {
+		a.renderContentMessage(w, r, http.StatusUnprocessableEntity,
+			"Pilih minimal satu konten sebelum menyimpan.")
 		return
 	}
 
-	slugs := uniqueSlugs(r.PostForm["slug"])
-	if len(slugs) == 0 {
-		a.renderContentMessage(w, r, http.StatusUnprocessableEntity,
-			"Pilih minimal satu series sebelum menyimpan.")
-		return
-	}
-
-	selections := make([]catalog.Series, 0, len(slugs))
+	chosen := make([]catalog.Series, 0, len(selections))
 	missing := make([]string, 0)
-	for _, slug := range slugs {
-		series, ok := a.content.lookup(slug)
+	seen := make(map[string]struct{}, len(selections))
+	for _, selection := range selections {
+		provider, category, slug := selection.normalized()
+		if slug == "" {
+			continue
+		}
+
+		key := contentKey(provider, category, slug)
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		series, ok := a.content.lookup(provider, category, slug)
 		if !ok {
-			missing = append(missing, slug)
+			missing = append(missing, provider+"/"+category+"/"+slug)
 			continue
 		}
 		if strings.TrimSpace(series.Provider) == "" {
 			series.Provider = provider
 		}
-		selections = append(selections, series)
+		if strings.TrimSpace(series.Category) == "" {
+			series.Category = category
+		}
+		chosen = append(chosen, series)
 	}
+
 	if len(missing) > 0 {
-		a.log.Warn("admin: slug konten tidak ada di cache",
-			"provider", provider, "missing", missing)
+		a.log.Warn("admin: konten pilihan tidak ada di cache",
+			"requested", len(selections), "missing", missing)
 		a.renderContentMessage(w, r, http.StatusUnprocessableEntity, fmt.Sprintf(
-			"%d series tidak ditemukan pada daftar terbaru (%s). Muat ulang daftar lalu pilih kembali.",
-			len(missing), strings.Join(missing, ", ")))
+			"%d konten tidak ditemukan pada daftar terbaru (%s). Muat ulang daftar lalu pilih kembali.",
+			len(missing), strings.Join(limitList(missing, maxMissingSelections), ", ")))
+		return
+	}
+	if len(chosen) == 0 {
+		a.renderContentMessage(w, r, http.StatusUnprocessableEntity,
+			"Pilih minimal satu konten sebelum menyimpan.")
 		return
 	}
 
-	runID, err := a.ingest.Start(r.Context(), selections)
+	runID, err := a.ingest.Start(r.Context(), chosen)
 	if err != nil {
 		if alreadyRunning(err) {
 			a.renderContentMessage(w, r, http.StatusConflict,
@@ -456,18 +658,47 @@ func (a *Admin) handleContentSelect(w http.ResponseWriter, r *http.Request) {
 				"Ruang penyimpanan tidak mencukupi; hapus konten lama terlebih dahulu.")
 			return
 		}
-		a.internalError(w, r, err, "Gagal mengantrekan series pilihan.")
+		a.internalError(w, r, err, "Gagal mengantrekan konten pilihan.")
 		return
 	}
 
-	a.log.Info("admin: series dimasukkan ke antrean",
-		"provider", provider,
-		"series", len(selections),
+	a.log.Info("admin: konten dimasukkan ke antrean",
+		"providers", selectionProviders(chosen),
+		"series", len(chosen),
 		"run_id", runID,
 		"username", a.sessionUsername(r),
 	)
-	a.flashTo(r, "success", fmt.Sprintf("%d series dimasukkan ke antrean (run #%d)", len(selections), runID))
+	a.flashTo(r, "success", fmt.Sprintf("%d series dimasukkan ke antrean (run #%d)", len(chosen), runID))
 	http.Redirect(w, r, "/sync", http.StatusSeeOther)
+}
+
+// selectionProviders mengembalikan daftar provider unik pada satu pilihan,
+// dipakai untuk log.
+func selectionProviders(series []catalog.Series) []string {
+	seen := make(map[string]struct{}, len(series))
+	providers := make([]string, 0, len(series))
+	for _, item := range series {
+		provider := strings.TrimSpace(item.Provider)
+		if provider == "" {
+			continue
+		}
+		if _, ok := seen[provider]; ok {
+			continue
+		}
+		seen[provider] = struct{}{}
+		providers = append(providers, provider)
+	}
+	return providers
+}
+
+// limitList mengembalikan maksimal n nilai pertama beserta penanda sisanya.
+func limitList(values []string, n int) []string {
+	if n <= 0 || len(values) <= n {
+		return values
+	}
+	limited := make([]string, 0, n+1)
+	limited = append(limited, values[:n]...)
+	return append(limited, fmt.Sprintf("… (+%d lainnya)", len(values)-n))
 }
 
 // Aksi "Remove all batch" pada modal "List Content".

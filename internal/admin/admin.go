@@ -232,6 +232,7 @@ func (a *Admin) Mount(r chi.Router) {
 		// dipasang; tanpa keduanya tombolnya tidak berguna sehingga route tidak
 		// dipasang sama sekali.
 		if a.lister != nil && a.ingest != nil {
+			pr.With(csrf).Get("/content", a.handleContent)
 			pr.With(csrf).Get("/content/short", a.handleContentShort)
 			pr.With(csrf).Post("/content/select", a.handleContentSelect)
 		}

@@ -53,28 +53,26 @@
 <p class="muted">Tidak ada run yang cocok dengan filter.</p>
 {{end}}
 
-<dialog id="content-dialog" class="modal" data-provider="dramahits" aria-labelledby="content-dialog-title">
+<dialog id="content-dialog" class="modal" aria-labelledby="content-dialog-title">
   <div class="dialog-head">
     <strong id="content-dialog-title">List Content</strong>
     <button type="button" class="secondary" id="close-content" aria-label="Tutup">×</button>
   </div>
 
   <div class="tabs" role="tablist" aria-label="Kategori konten">
-    <button type="button" class="tab active" id="tab-vod" role="tab"
-            aria-selected="true" aria-controls="panel-vod">VOD</button>
+    <button type="button" class="tab active" id="tab-movie" role="tab"
+            data-category="movie" aria-selected="true" aria-controls="content-panel">Movie</button>
+    <button type="button" class="tab" id="tab-series" role="tab"
+            data-category="series" aria-selected="false" aria-controls="content-panel">Series</button>
     <button type="button" class="tab" id="tab-short" role="tab"
-            aria-selected="false" aria-controls="panel-short">Short</button>
+            data-category="short" aria-selected="false" aria-controls="content-panel">Short</button>
   </div>
 
   <div class="dialog-body">
-    <section class="tab-panel" id="panel-vod" role="tabpanel" aria-labelledby="tab-vod">
-      <p class="muted">Densgo belum tersedia.</p>
-    </section>
-
-    <section class="tab-panel" id="panel-short" role="tabpanel" aria-labelledby="tab-short" hidden>
+    <section class="tab-panel" id="content-panel" role="tabpanel" aria-labelledby="tab-movie">
       <p class="flash error" id="content-error" hidden></p>
       <div class="content-grid" id="content-list">
-        <p class="muted">Memuat daftar series…</p>
+        <p class="muted">Memuat daftar konten…</p>
       </div>
       <div class="pager">
         <button type="button" class="secondary" id="prev-page" disabled>‹ Sebelumnya</button>
@@ -102,10 +100,8 @@
   var openButton = document.getElementById('open-content');
   var closeButton = document.getElementById('close-content');
   var cancelButton = document.getElementById('cancel-content');
-  var tabVOD = document.getElementById('tab-vod');
-  var tabShort = document.getElementById('tab-short');
-  var panelVOD = document.getElementById('panel-vod');
-  var panelShort = document.getElementById('panel-short');
+  var tabs = Array.prototype.slice.call(dialog.querySelectorAll('.tab[data-category]'));
+  var panel = document.getElementById('content-panel');
   var listElement = document.getElementById('content-list');
   var errorElement = document.getElementById('content-error');
   var prevButton = document.getElementById('prev-page');
@@ -114,14 +110,24 @@
   var saveButton = document.getElementById('save-selection');
   var purgeButton = document.getElementById('purge-content');
 
-  // selected menyimpan slug -> objek series, sehingga centang tetap bertahan
-  // saat pengguna berpindah halaman.
+  // currentCategory adalah tab yang sedang aktif; tab Movie dipakai saat modal
+  // dibuka.
+  var currentCategory = 'movie';
+
+  // selected memetakan "provider\x00kategori\x00slug" -> objek item, sehingga
+  // pilihan tetap bertahan saat pengguna berpindah tab/halaman, dan dua konten
+  // dengan slug sama (Densgo movie dan series memakai ID provider) tidak
+  // saling menimpa.
   var selected = new Map();
   var currentPage = 1;
   var lastPage = 1;
   var totalItems = 0;
-  var loaded = false;
   var loading = false;
+  var requestToken = 0;
+
+  function selectionKey(item) {
+    return (item.provider || '') + '\x00' + (item.category || '') + '\x00' + (item.slug || '');
+  }
 
   function csrfToken() {
     var input = document.querySelector('input[name="_csrf"]');
@@ -150,22 +156,27 @@
     listElement.appendChild(message);
   }
 
-  function episodeLabel(count) {
+  // episodeLabel menampilkan keterangan singkat di bawah judul. Daftar film
+  // Densgo tidak menyebut jumlah episode, jadi kategori movie memakai "Film".
+  function episodeLabel(item) {
+    var category = item.category || currentCategory;
+    if (category === 'movie') { return 'Film'; }
+    var count = item.episode_count || 0;
     if (!count) { return '0 episode'; }
     return count + ' episode';
   }
 
-  // alreadyAdded melaporkan apakah server menandai series ini sudah ada di
+  // alreadyAdded melaporkan apakah server menandai konten ini sudah ada di
   // database (punya rendition). Item seperti itu tidak boleh dipilih lagi.
   function alreadyAdded(item) {
     return item.already_added === true;
   }
 
   // pruneSelected membuang item yang sudah ada dari pilihan, termasuk pilihan
-  // yang dibuat pada halaman lain sebelum statusnya diketahui.
+  // yang dibuat pada halaman/tab lain sebelum statusnya diketahui.
   function pruneSelected(items) {
     items.forEach(function (item) {
-      if (alreadyAdded(item)) { selected.delete(item.slug); }
+      if (alreadyAdded(item)) { selected.delete(selectionKey(item)); }
     });
   }
 
@@ -175,11 +186,12 @@
     updateSaveButton();
 
     if (!items.length) {
-      placeholder('Tidak ada series pada halaman ini.');
+      placeholder('Tidak ada konten pada halaman ini.');
       return;
     }
 
     items.forEach(function (item) {
+      var key = selectionKey(item);
       var added = alreadyAdded(item);
 
       var card = document.createElement('label');
@@ -188,10 +200,10 @@
 
       var checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
-      checkbox.setAttribute('data-slug', item.slug);
+      checkbox.setAttribute('data-key', key);
       // Item yang sudah ada selalu tidak tercentang dan tidak bisa diubah,
       // sehingga tidak pernah masuk ke Map selected.
-      checkbox.checked = !added && selected.has(item.slug);
+      checkbox.checked = !added && selected.has(key);
       checkbox.disabled = added;
       checkbox.addEventListener('change', function () {
         if (added) {
@@ -199,9 +211,9 @@
           return;
         }
         if (checkbox.checked) {
-          selected.set(item.slug, item);
+          selected.set(key, item);
         } else {
-          selected.delete(item.slug);
+          selected.delete(key);
         }
         updateSaveButton();
       });
@@ -221,7 +233,7 @@
 
       var meta = document.createElement('span');
       meta.className = 'small muted';
-      meta.textContent = episodeLabel(item.episode_count);
+      meta.textContent = episodeLabel(item);
       info.appendChild(meta);
 
       // Badge penanda konten yang sudah ada di database.
@@ -240,7 +252,7 @@
   }
 
   function renderPager() {
-    indicator.textContent = 'Halaman ' + currentPage + ' / ' + lastPage + ' · ' + totalItems + ' series';
+    indicator.textContent = 'Halaman ' + currentPage + ' / ' + lastPage + ' · ' + totalItems + ' konten';
     prevButton.disabled = loading || currentPage <= 1;
     nextButton.disabled = loading || currentPage >= lastPage;
   }
@@ -257,14 +269,16 @@
   }
 
   function loadPage(page) {
-    if (loading) { return; }
+    var token = ++requestToken;
+    var category = currentCategory;
+
     loading = true;
     clearError();
     listElement.textContent = '';
-    placeholder('Memuat daftar series…');
+    placeholder('Memuat daftar konten…');
     renderPager();
 
-    fetch('/content/short?page=' + encodeURIComponent(page), {
+    fetch('/content?category=' + encodeURIComponent(category) + '&page=' + encodeURIComponent(page), {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
       credentials: 'same-origin'
@@ -273,47 +287,59 @@
         return { ok: response.ok, body: body };
       });
     }).then(function (result) {
+      // Jawaban untuk tab/halaman lama dibuang supaya daftar tidak tertukar.
+      if (token !== requestToken) { return; }
+      loading = false;
+
       var body = result.body || {};
       if (!result.ok || body.code !== 0) {
-        showError(body.msg || 'Gagal memuat daftar series.');
+        showError(body.msg || 'Gagal memuat daftar konten.');
         listElement.textContent = '';
         placeholder('Daftar tidak dapat dimuat.');
+        renderPager();
         return;
       }
       applyPage(body.data || {}, page);
     }).catch(function () {
-      showError('Gagal memuat daftar series.');
+      if (token !== requestToken) { return; }
+      loading = false;
+      showError('Gagal memuat daftar konten.');
       listElement.textContent = '';
       placeholder('Daftar tidak dapat dimuat.');
-    }).then(function () {
-      loading = false;
       renderPager();
     });
   }
 
-  function activateTab(name) {
-    var shortActive = name === 'short';
-    tabVOD.classList.toggle('active', !shortActive);
-    tabShort.classList.toggle('active', shortActive);
-    tabVOD.setAttribute('aria-selected', String(!shortActive));
-    tabShort.setAttribute('aria-selected', String(shortActive));
-    panelVOD.hidden = shortActive;
-    panelShort.hidden = !shortActive;
+  // activateTab memindahkan penanda tab aktif dan mengatur ulang pager. Daftar
+  // dimuat terpisah lewat loadPage supaya pemanggil bisa memilih halaman.
+  function activateTab(category) {
+    currentCategory = category;
+    tabs.forEach(function (tab) {
+      var active = tab.getAttribute('data-category') === category;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-selected', String(active));
+      if (active) { panel.setAttribute('aria-labelledby', tab.id); }
+    });
 
-    if (shortActive && !loaded) {
-      loaded = true;
-      loadPage(currentPage);
-    }
+    currentPage = 1;
+    lastPage = 1;
+    totalItems = 0;
+    renderPager();
+  }
+
+  function selectCategory(category) {
+    activateTab(category);
+    loadPage(1);
   }
 
   function openDialog() {
-    activateTab('vod');
     updateSaveButton();
     if (typeof dialog.showModal === 'function') {
       dialog.showModal();
     } else {
       dialog.setAttribute('open', 'open');
     }
+    selectCategory('movie');
   }
 
   function closeDialog() {
@@ -337,19 +363,22 @@
     csrf.value = csrfToken();
     form.appendChild(csrf);
 
-    var provider = document.createElement('input');
-    provider.type = 'hidden';
-    provider.name = 'provider';
-    provider.value = dialog.getAttribute('data-provider') || 'dramahits';
-    form.appendChild(provider);
-
-    selected.forEach(function (item, slug) {
-      var field = document.createElement('input');
-      field.type = 'hidden';
-      field.name = 'slug';
-      field.value = slug;
-      form.appendChild(field);
+    // Pilihan dikirim sebagai satu field JSON; server meresolusi tiap entri
+    // berdasarkan provider + kategori + slug dari cache daftar terbaru.
+    var payload = [];
+    selected.forEach(function (item) {
+      payload.push({
+        provider: item.provider || '',
+        category: item.category || currentCategory,
+        slug: item.slug || ''
+      });
     });
+
+    var selections = document.createElement('input');
+    selections.type = 'hidden';
+    selections.name = 'selections';
+    selections.value = JSON.stringify(payload);
+    form.appendChild(selections);
 
     document.body.appendChild(form);
     form.submit();
@@ -386,8 +415,11 @@
   cancelButton.addEventListener('click', closeDialog);
   saveButton.addEventListener('click', saveSelection);
   purgeButton.addEventListener('click', removeAllBatch);
-  tabVOD.addEventListener('click', function () { activateTab('vod'); });
-  tabShort.addEventListener('click', function () { activateTab('short'); });
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      selectCategory(tab.getAttribute('data-category'));
+    });
+  });
   prevButton.addEventListener('click', function () {
     if (currentPage > 1) { loadPage(currentPage - 1); }
   });
@@ -395,6 +427,7 @@
     if (currentPage < lastPage) { loadPage(currentPage + 1); }
   });
 
+  activateTab('movie');
   updateSaveButton();
 }());
 </script>

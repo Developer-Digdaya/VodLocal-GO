@@ -135,24 +135,27 @@ func (m *stubMedia) removedLabels() []string {
 	return out
 }
 
-// stubLister menggantikan klien provider Dramahits pada modal "List Content".
-// Perilaku per halaman diatur lewat fn agar test bisa menguji pagination.
+// stubLister menggantikan catalog.SourceSet pada modal "List Content".
+// Perilaku per kategori dan halaman diatur lewat fn agar test bisa menguji
+// pagination maupun pemisahan kategori (movie/series/short).
 type stubLister struct {
-	mu    sync.Mutex
-	pages []int
-	fn    func(page int) (catalog.SeriesPage, error)
+	mu         sync.Mutex
+	pages      []int
+	categories []string
+	fn         func(category string, page int) (catalog.SeriesPage, error)
 }
 
-func (l *stubLister) ListSeries(_ context.Context, page int) (catalog.SeriesPage, error) {
+func (l *stubLister) ListSeries(_ context.Context, category string, page int) (catalog.SeriesPage, error) {
 	l.mu.Lock()
 	l.pages = append(l.pages, page)
+	l.categories = append(l.categories, category)
 	fn := l.fn
 	l.mu.Unlock()
 
 	if fn == nil {
 		return catalog.SeriesPage{Page: page, PerPage: 20, Total: 0, LastPage: 1}, nil
 	}
-	return fn(page)
+	return fn(category, page)
 }
 
 func (l *stubLister) pagesSeen() []int {
@@ -160,6 +163,14 @@ func (l *stubLister) pagesSeen() []int {
 	defer l.mu.Unlock()
 	out := make([]int, len(l.pages))
 	copy(out, l.pages)
+	return out
+}
+
+func (l *stubLister) categoriesSeen() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	out := make([]string, len(l.categories))
+	copy(out, l.categories)
 	return out
 }
 

@@ -47,15 +47,16 @@ kehilangan koneksi internet.
 Konten berasal dari dua penyedia:
 
 - **Dramahits** → kategori **Short** (aktif).
-- **Densgo** → kategori **VOD** (masih placeholder, menunggu kontrak API).
+- **Densgo** → kategori **Movie** dan **Series** (aktif).
 
 ---
 
 ## 2. Fitur
 
 - **Katalog offline** — judul, episode, genre, pencarian, dan poster.
-- **Pemilihan konten dari panel** — modal List Content dengan tab Short/VOD,
-  pagination, checkbox yang bertahan antar-halaman, dan penanda “Sudah ada”.
+- **Pemilihan konten dari panel** — modal List Content dengan tab **Movie**,
+  **Series**, dan **Short (Dramahits)**, pagination, checkbox yang bertahan
+  antar-halaman, dan penanda “Sudah ada”.
 - **Worker ingest** — mengambil episode dari API, memilih varian video, mengunduh
   segmen, menulis playlist lokal, dan mengaktifkan generation baru.
 - **Progres per series** — status, episode selesai/gagal, rendition, byte, persentase,
@@ -92,8 +93,8 @@ flowchart LR
     end
 
     subgraph P["Penyedia"]
-        DRAMA["Dramahits API"]
-        DENS["Densgo API<br/>placeholder"]
+        DRAMA["Dramahits API<br/>short"]
+        DENS["Densgo API<br/>movie + series"]
         ORIGIN["Origin HLS<br/>m3u8 + ts"]
     end
 
@@ -105,13 +106,11 @@ flowchart LR
     ADMIN --> DB
     INGEST --> DB
     INGEST --> DRAMA
-    INGEST -.->|"VOD belum aktif"| DENS
+    INGEST -->|"list + episode"| DENS
     INGEST -->|"unduh segmen"| ORIGIN
     INGEST --> STORE
     MEDIA --> STORE
 ```
-
-> Garis putus-putus menunjukkan alur yang belum aktif (Densgo/VOD).
 
 | Komponen | Tanggung jawab |
 | --- | --- |
@@ -120,6 +119,7 @@ flowchart LR
 | `internal/admin` | Panel HTML: sync, storage, device, settings |
 | `internal/ingest` | Worker pemilihan series + progres per series |
 | `internal/dramahits` | Klien API series & episode |
+| `internal/densgo` | Klien API Densgo (movie & series) |
 | `internal/hls` | Parser dan rewriter playlist |
 | `internal/download` | Unduhan paralel dengan retry dan resume |
 | `internal/mediafs` | Layout generation, staging, atomic switch |
@@ -168,9 +168,12 @@ VODLOCAL_SESSION_SECRET='ganti-dengan-rahasia-acak-minimal-16-karakter' \
 
 `VODLOCAL_DRAMAHITS_BASE_URL` wajib diisi; contoh nilai staging ada di
 [`deploy/vodlocal.env.example`](./deploy/vodlocal.env.example).
+`VODLOCAL_DENSGO_BASE_URL` sudah diekspor `scripts/run-local.sh` dengan URL
+publik Densgo, jadi tidak perlu diisi untuk development.
 
 Untuk development lokal, skrip `scripts/run-local.sh` otomatis memakai URL
-staging, admin `admin` / `admin12345`, dan bind ke `127.0.0.1:8080`:
+staging Dramahits, URL publik Densgo, admin `admin` / `admin12345`, dan bind ke
+`127.0.0.1:8080`:
 
 ```bash
 bash scripts/run-local.sh
@@ -185,7 +188,7 @@ Admin default hanya dibuat saat tabel `auth_users` masih kosong. Untuk mereset,
 hapus `data/app.db` (data lokal, tidak ikut repo).
 
 Buka `http://127.0.0.1:8080/login`, masuk sebagai admin, lalu buka **List Content**
-di halaman `/sync` untuk memilih series Dramahits.
+di halaman `/sync` untuk memilih konten Densgo (Movie/Series) atau Dramahits (Short).
 
 Default:
 
@@ -219,6 +222,7 @@ Semua konfigurasi memakai environment dengan prefix `VODLOCAL_`. Contoh lengkap 
 | `VODLOCAL_TELEGRAM_TOKEN` | *(kosong)* | Token bot Telegram |
 | `VODLOCAL_TELEGRAM_CHAT_ID` | *(kosong)* | Chat/topik tujuan |
 | `VODLOCAL_DRAMAHITS_BASE_URL` | **(wajib)** | Base API Dramahits; tidak ada default |
+| `VODLOCAL_DENSGO_BASE_URL` | `https://pp.dens.tv:777/index.php/v3070/adps_list_movies_v1` | Base API Densgo (tab Movie & Series) |
 | `VODLOCAL_INGEST_MAX_EPISODES` | `0` | Batas episode per series untuk pengujian; `0` = tanpa batas |
 | `VODLOCAL_READ_HEADER_TIMEOUT` | `10s` | Timeout header HTTP |
 | `VODLOCAL_IDLE_TIMEOUT` | `120s` | Timeout koneksi idle |
@@ -240,11 +244,13 @@ Akun admin dibuat otomatis saat boot **hanya jika** `VODLOCAL_ADMIN_USER` dan
 | `/storage` | Daftar konten per series, hapus per konten, hapus semua konten |
 | `/settings` | Ambang storage, paralelisme sync, jadwal cron |
 
-**List Content.** Modal dengan tab **VOD** (default) dan **Short**. Tab Short memanggil
-API Dramahits dengan pagination; checkbox bertahan saat berpindah halaman. Series yang
-sudah ada ditandai **Sudah ada** dan tidak bisa dipilih. Tombol **Simpan pilihan**
-membuat run ingest baru; tombol **Remove all batch** menghapus seluruh storage dan
-katalog terlebih dahulu.
+**List Content.** Modal dengan tiga tab: **Movie**, **Series**, dan **Short
+(Dramahits)**. Tab Movie/Series memanggil API Densgo, tab Short memanggil API
+Dramahits; masing-masing memakai pagination dan checkbox yang bertahan saat
+berpindah halaman/tab. Konten yang sudah ada ditandai **Sudah ada** dan tidak bisa
+dipilih. Tombol **Simpan pilihan** mengirim daftar `{provider, category, slug}`
+terpilih dan membuat run ingest baru; tombol **Remove all batch** menghapus seluruh
+storage dan katalog terlebih dahulu.
 
 **Waktu.** Semua timestamp di panel ditampilkan dalam **WIB (UTC+7)**. Database tetap
 menyimpan UTC.
@@ -332,24 +338,37 @@ Bearer; varian dan segmen tidak.
 
 ### 10.1 Layout
 
-Folder memakai **UUID** dari provider, bukan slug/judul, dan poster berada di dalam
-generation:
+Folder memakai **ID dari provider**, bukan slug/judul, dan mengikuti
+`<provider>/<category>/<seriesID>/...` dengan `category` = `short` (Dramahits),
+`movie`, atau `series` (Densgo). Poster berada di dalam generation:
 
 ```text
 <VODLOCAL_MEDIA_ROOT>/
-├── .building-gen-000043/                 # staging sementara
+├── .building-gen-000043/                    # staging sementara
 └── gen-000042/
-    └── dramahits/series/<seriesUUID>/
+    ├── dramahits/short/<series-id>/
+    │   ├── poster.jpg
+    │   └── <episode-id>/<quality>/
+    │       ├── index.m3u8
+    │       └── seg-00001.ts
+    ├── densgo/series/<series-id>/
+    │   ├── poster.jpg
+    │   └── <episode-id>/<quality>/
+    │       ├── index.m3u8
+    │       └── seg-00001.ts
+    └── densgo/movie/<movie-id>/
         ├── poster.jpg
-        └── <episodeUUID>/<quality>/
+        └── <quality>/                         # movie tanpa folder episode
             ├── index.m3u8
             └── seg-00001.ts
 ```
 
-- Fallback bila UUID kosong: slug series dan `s01e01`.
+- Fallback bila ID kosong: slug series dan `s01e01`.
 - `titles.poster_path` dan `renditions.playlist_path` relatif terhadap root generation.
 - API mengembalikan poster/backdrop/still sebagai `/media/<generation>/<path>`.
 - `generations.root_path` menyimpan label relatif, sehingga root media bisa dipindah.
+- Path lama (mis. `dramahits/series/...`) tetap valid karena database menyimpan path
+  relatif; hanya ingest baru yang memakai layout kategori di atas.
 
 ### 10.2 Penghapusan
 
@@ -376,15 +395,20 @@ generation:
 
 ## 11. Ingest Konten
 
-1. Admin memilih series dari modal **List Content** (tab Short).
+1. Admin memilih konten dari modal **List Content** (tab Movie, Series, atau Short).
 2. Worker membuat generation baru + run `selection`.
-3. Untuk setiap series, worker mengambil **semua halaman** episode dari API Dramahits.
-4. Untuk setiap episode, dipilih stream `device = android` (fallback `ios`).
-5. Master playlist diambil, lalu varian dipilih: **sisi pendek ≤ 480** dan terbesar
-   yang memenuhi; bila tidak ada, varian terkecil.
-6. Playlist ditulis ulang, segmen diunduh, poster series disimpan di folder series.
-7. Progres per series ditulis ke `generation_items`.
-8. Setelah selesai, generation di-commit, generation lama di-`retired`, katalog yatim
+3. **Densgo series** — daftar series hanya memberi `id`; `stream_url` pada daftar bernilai
+   `null`. Worker wajib memanggil `GET /episodes?seriesId=<id>` dan memakai `stream_url`
+   dari tiap episode.
+4. **Densgo movie** — tidak ada endpoint episode; `stream_url` pada item daftar langsung
+   dipakai sebagai satu playable (`playables.episode_id` NULL).
+5. **Dramahits short** — worker mengambil semua halaman episode, lalu memilih stream
+   `device = android` (fallback `ios`).
+6. Master playlist diambil, lalu varian dipilih: **sisi pendek ≤ 480** dan terbesar
+   yang memenuhi; bila tidak ada, varian terkecil. Hanya satu varian yang diunduh.
+7. Playlist ditulis ulang, segmen diunduh, poster disimpan di folder konten.
+8. Progres per konten ditulis ke `generation_items`.
+9. Setelah selesai, generation di-commit, generation lama di-`retired`, katalog yatim
    dibersihkan, dan run ditandai selesai.
 
 **Yang belum ditangani:** subtitle Dramahits (`EXT-X-MEDIA`) dan penyalinan konten lama
@@ -480,7 +504,8 @@ sudo ./scripts/deploy-linux.sh
 ```
 
 Skrip melakukan build ulang, memasang ulang unit systemd, dan restart service.
-Env yang sudah ada tidak ditimpa. Kalau `deploy/vodlocal.env.example` berubah,
+Nilai env yang sudah ada tidak ditimpa; bila `VODLOCAL_DENSGO_BASE_URL` belum ada,
+skrip menambahkannya otomatis. Kalau `deploy/vodlocal.env.example` berubah,
 bandingkan dan tambahkan variabel baru secara manual:
 
 ```bash
@@ -551,6 +576,7 @@ internal/store/      SQLite + migrasi
 internal/hls/        parser/rewriter playlist
 internal/catalog/    kontrak data pemilihan konten
 internal/dramahits/  klien API Dramahits
+internal/densgo/     klien API Densgo (movie & series)
 internal/ingest/     worker pemilihan series + progres
 internal/provider/   interface upstream + fake
 internal/download/   downloader paralel
@@ -588,9 +614,10 @@ openapi.json         spesifikasi OpenAPI 3.0.3
 
 | Item | Status |
 | --- | --- |
-| Densgo / tab VOD | Placeholder, menunggu kontrak API |
+| Densgo series | `stream_url` pada daftar bernilai `null`; URL m3u8 wajib diambil dari `GET /episodes?seriesId=<id>` per episode |
+| Varian video | Hanya satu varian terpilih (sisi pendek ≤ 480p) yang diunduh dan disimpan |
 | Subtitle Dramahits (`EXT-X-MEDIA`) | Belum diunduh |
-| Live streaming | Tidak didukung; sistem ini VOD offline |
+| Live streaming | Tidak didukung; sistem ini menyimpan konten on-demand secara offline |
 | Carry-over generation | Menambah batch baru belum menyalin konten lama ke generation baru |
 | Uji 100 stream di jaringan bus | Belum; butuh switch/AP gigabit |
 | Importer copy manual | Direncanakan |

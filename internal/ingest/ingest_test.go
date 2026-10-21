@@ -36,12 +36,12 @@ const (
 
 // seriesPlaylistPath menyusun path playlist relatif terhadap root generation.
 func seriesPlaylistPath(seriesDir, episodeDir, quality string) string {
-	return "dramahits/series/" + seriesDir + "/" + episodeDir + "/" + quality + "/index.m3u8"
+	return "dramahits/short/" + seriesDir + "/" + episodeDir + "/" + quality + "/index.m3u8"
 }
 
 // seriesPosterPath menyusun path poster relatif terhadap root generation.
 func seriesPosterPath(seriesDir string) string {
-	return "dramahits/series/" + seriesDir + "/poster.jpg"
+	return "dramahits/short/" + seriesDir + "/poster.jpg"
 }
 
 // newTestStore membuka SQLite sungguhan di t.TempDir() dan menjalankan migrasi.
@@ -113,15 +113,23 @@ func newEnv(t *testing.T, src catalog.Source, client *http.Client, opts ...func(
 // fakeSource adalah catalog.Source in-memory. gate, bila tidak nil, membuat
 // ListEpisodes menunggu sampai channel ditutup.
 type fakeSource struct {
-	code  string
-	pages map[string][]catalog.EpisodePage
-	gate  chan struct{}
+	code     string
+	category string
+	pages    map[string][]catalog.EpisodePage
+	gate     chan struct{}
 
 	mu   sync.Mutex
 	seen map[string][]int
 }
 
 func (f *fakeSource) Code() string { return f.code }
+
+func (f *fakeSource) Category() string {
+	if f.category == "" {
+		return catalog.CategoryShort
+	}
+	return f.category
+}
 
 func (f *fakeSource) ListSeries(context.Context, int) (catalog.SeriesPage, error) {
 	return catalog.SeriesPage{}, nil
@@ -515,7 +523,7 @@ func TestIngestHappyPath(t *testing.T) {
 		t.Errorf("ArtworkRoot masih dipakai ingest, mau tidak ada (err=%v)", err)
 	}
 	// Folder series memakai UUID; tidak ada folder slug yang dibuat.
-	if _, err := os.Stat(filepath.Join(genDir, "dramahits", "series", testSeriesSlug)); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(genDir, "dramahits", "short", testSeriesSlug)); !os.IsNotExist(err) {
 		t.Errorf("folder slug %q ada, mau hanya UUID (err=%v)", testSeriesSlug, err)
 	}
 
@@ -588,12 +596,12 @@ func TestIngestMediaPathUsesProviderIDs(t *testing.T) {
 	}
 
 	// Path langsung yang memakai UUID ada; path berbasis slug tidak dibuat.
-	mustExist(t, filepath.Join(genDir, "dramahits", "series", testSeriesID, posterFileName))
-	mustExist(t, filepath.Join(genDir, "dramahits", "series", testSeriesID, testEpisodeID, "360p", playlistFileName))
-	if _, err := os.Stat(filepath.Join(genDir, "dramahits", "series", testSeriesSlug)); !os.IsNotExist(err) {
+	mustExist(t, filepath.Join(genDir, "dramahits", "short", testSeriesID, posterFileName))
+	mustExist(t, filepath.Join(genDir, "dramahits", "short", testSeriesID, testEpisodeID, "360p", playlistFileName))
+	if _, err := os.Stat(filepath.Join(genDir, "dramahits", "short", testSeriesSlug)); !os.IsNotExist(err) {
 		t.Errorf("folder series %q ada, mau hanya UUID (err=%v)", testSeriesSlug, err)
 	}
-	if _, err := os.Stat(filepath.Join(genDir, "dramahits", "series", testSeriesID, "s01e01")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(genDir, "dramahits", "short", testSeriesID, "s01e01")); !os.IsNotExist(err) {
 		t.Errorf("folder episode s01e01 ada, mau UUID episode (err=%v)", err)
 	}
 }
@@ -952,8 +960,8 @@ func TestIngestRetiresPreviousGeneration(t *testing.T) {
 	if got := queryInt(t, env.store.Read(), `SELECT COUNT(*) FROM generations WHERE status = 'retired'`); got != 1 {
 		t.Errorf("jumlah generation retired = %d, mau 1", got)
 	}
-	mustExist(t, filepath.Join(env.root, "gen-000001", "dramahits", "series", testSeriesID, testEpisodeID, "360p", "index.m3u8"))
-	mustExist(t, filepath.Join(env.root, "gen-000002", "dramahits", "series", testSeriesID, testEpisodeID, "360p", "index.m3u8"))
+	mustExist(t, filepath.Join(env.root, "gen-000001", "dramahits", "short", testSeriesID, testEpisodeID, "360p", "index.m3u8"))
+	mustExist(t, filepath.Join(env.root, "gen-000002", "dramahits", "short", testSeriesID, testEpisodeID, "360p", "index.m3u8"))
 
 	// Tidak ada masa tenggang: generation retired dengan retired_at yang sudah
 	// sangat tua pun tetap dipertahankan pada run berikutnya.
@@ -977,7 +985,7 @@ func TestIngestRetiresPreviousGeneration(t *testing.T) {
 	if got := queryString(t, env.store.Read(), `SELECT status FROM generations WHERE label = 'gen-000001'`); got != "retired" {
 		t.Errorf("status gen-000001 = %q, mau retired", got)
 	}
-	mustExist(t, filepath.Join(env.root, "gen-000001", "dramahits", "series", testSeriesID, testEpisodeID, "360p", "index.m3u8"))
+	mustExist(t, filepath.Join(env.root, "gen-000001", "dramahits", "short", testSeriesID, testEpisodeID, "360p", "index.m3u8"))
 	if got := queryString(t, env.store.Read(), `SELECT label FROM generations WHERE status = 'active'`); got != "gen-000003" {
 		t.Errorf("generation aktif = %q, mau gen-000003", got)
 	}
@@ -1021,8 +1029,89 @@ func TestIngestFallsBackToIOSStream(t *testing.T) {
 	}
 }
 
-// TestStartValidation memastikan selection kosong dan provider campuran ditolak
-// tanpa menyentuh database.
+func TestIngestDensgoMovie(t *testing.T) {
+	srv := newHLSServer(t)
+	src := &fakeSource{code: "densgo", category: catalog.CategoryMovie}
+	env := newEnv(t, src, srv.Client())
+
+	movie := catalog.Series{
+		Provider:  "densgo",
+		Category:  catalog.CategoryMovie,
+		ID:        "test-movie",
+		Slug:      "test-movie",
+		Title:     "Movie Uji",
+		PosterURL: srv.URL + "/art/poster.jpg",
+		StreamURL: srv.URL + "/master.m3u8",
+	}
+
+	runID, err := env.svc.Start(context.Background(), []catalog.Series{movie})
+	if err != nil {
+		t.Fatalf("Start(movie): %v", err)
+	}
+	if got := waitRun(t, env.store, runID); got != "completed" {
+		t.Fatalf("sync_runs.status = %q, mau completed", got)
+	}
+
+	if got := queryString(t, env.store.Read(), `SELECT kind FROM titles`); got != "movie" {
+		t.Errorf("titles.kind = %q, mau movie", got)
+	}
+	if got := queryInt(t, env.store.Read(), `SELECT COUNT(*) FROM playables WHERE episode_id IS NULL`); got != 1 {
+		t.Errorf("playables movie (episode_id NULL) = %d, mau 1", got)
+	}
+	if got := queryString(t, env.store.Read(), `SELECT playlist_path FROM renditions`); got != "densgo/movie/test-movie/360p/index.m3u8" {
+		t.Errorf("playlist_path = %q", got)
+	}
+	if got := queryString(t, env.store.Read(), `SELECT poster_path FROM titles`); got != "densgo/movie/test-movie/poster.jpg" {
+		t.Errorf("poster_path = %q", got)
+	}
+	if got := queryString(t, env.store.Read(), `SELECT category FROM generation_items`); got != catalog.CategoryMovie {
+		t.Errorf("generation_items.category = %q, mau movie", got)
+	}
+	mustExist(t, filepath.Join(env.root, "gen-000001", "densgo", "movie", "test-movie", "360p", "index.m3u8"))
+}
+
+func TestIngestDensgoSeries(t *testing.T) {
+	srv := newHLSServer(t)
+	episodePage := episodePages(srv.URL)[testSeriesSlug]
+	src := &fakeSource{
+		code:     "densgo",
+		category: catalog.CategorySeries,
+		pages:    map[string][]catalog.EpisodePage{"test-series": episodePage},
+	}
+	env := newEnv(t, src, srv.Client())
+
+	series := catalog.Series{
+		Provider:  "densgo",
+		Category:  catalog.CategorySeries,
+		ID:        "test-series",
+		Slug:      "test-series",
+		Title:     "Series Uji",
+		PosterURL: srv.URL + "/art/poster.jpg",
+	}
+
+	runID, err := env.svc.Start(context.Background(), []catalog.Series{series})
+	if err != nil {
+		t.Fatalf("Start(series): %v", err)
+	}
+	if got := waitRun(t, env.store, runID); got != "completed" {
+		t.Fatalf("sync_runs.status = %q, mau completed", got)
+	}
+
+	want := "densgo/series/test-series/" + testEpisodeID + "/360p/index.m3u8"
+	if got := queryString(t, env.store.Read(), `SELECT playlist_path FROM renditions`); got != want {
+		t.Errorf("playlist_path = %q, mau %q", got, want)
+	}
+	if got := queryString(t, env.store.Read(), `SELECT category FROM generation_items`); got != catalog.CategorySeries {
+		t.Errorf("generation_items.category = %q, mau series", got)
+	}
+	if got := queryInt(t, env.store.Read(), `SELECT COUNT(*) FROM playables WHERE episode_id IS NOT NULL`); got != 1 {
+		t.Errorf("playables episode = %d, mau 1", got)
+	}
+	mustExist(t, filepath.Join(env.root, "gen-000001", "densgo", "series", "test-series", testEpisodeID, "360p", "index.m3u8"))
+}
+
+// TestStartValidation memastikan selection kosong dan provider tanpa source
+// ditolak tanpa menyentuh database.
 func TestStartValidation(t *testing.T) {
 	srv := newHLSServer(t)
 	src := &fakeSource{code: "dramahits", pages: episodePages(srv.URL)}
@@ -1035,8 +1124,8 @@ func TestStartValidation(t *testing.T) {
 
 	mixed := selection("")
 	mixed = append(mixed, catalog.Series{Provider: "dens_tv", Slug: "lain"})
-	if _, err := env.svc.Start(ctx, mixed); !errors.Is(err, ErrMixedProviders) {
-		t.Errorf("Start(campuran) = %v, mau ErrMixedProviders", err)
+	if _, err := env.svc.Start(ctx, mixed); err == nil {
+		t.Error("Start(campuran tanpa source dens_tv) = nil, mau error")
 	}
 
 	if got := queryInt(t, env.store.Read(), `SELECT COUNT(*) FROM generations`); got != 0 {
@@ -1117,7 +1206,7 @@ func TestIngestRemovesFailedRenditionFiles(t *testing.T) {
 		t.Fatalf("sync_runs.status = %q, mau completed (satu episode sukses)", got)
 	}
 
-	failedDir := filepath.Join(env.root, "gen-000001", "dramahits", "series", testSeriesID, badEpisodeID, "360p")
+	failedDir := filepath.Join(env.root, "gen-000001", "dramahits", "short", testSeriesID, badEpisodeID, "360p")
 	if _, err := os.Stat(failedDir); !os.IsNotExist(err) {
 		t.Fatalf("folder rendition gagal masih ada di %s (err=%v)", failedDir, err)
 	}

@@ -16,7 +16,9 @@ import (
 
 	"vodlocal/internal/admin"
 	"vodlocal/internal/api"
+	"vodlocal/internal/catalog"
 	"vodlocal/internal/config"
+	"vodlocal/internal/densgo"
 	"vodlocal/internal/download"
 	"vodlocal/internal/dramahits"
 	"vodlocal/internal/httpserver"
@@ -88,12 +90,15 @@ func run() error {
 	}
 
 	dramaClient := dramahits.NewClient(cfg.DramahitsBaseURL, 30*time.Second)
+	densgoMovie := densgo.NewClient(cfg.DensgoBaseURL, 30*time.Second, catalog.CategoryMovie)
+	densgoSeries := densgo.NewClient(cfg.DensgoBaseURL, 30*time.Second, catalog.CategorySeries)
+	sources := catalog.SourceSet{dramaClient, densgoMovie, densgoSeries}
 
 	ingestSvc, err := ingest.New(ingest.Config{
 		Store:       st,
 		Media:       media,
 		Downloader:  downloader,
-		Source:      dramaClient,
+		Sources:     sources,
 		Logger:      logger,
 		Now:         time.Now,
 		ArtworkRoot: cfg.ArtworkRoot,
@@ -160,7 +165,7 @@ func run() error {
 		Logger:   logger,
 		Now:      time.Now,
 		Version:  version,
-		Lister:   dramaClient,
+		Lister:   sources,
 		Ingest:   ingestSvc,
 		// ArtworkRoot dipakai aksi "Remove all batch" untuk mengosongkan cache
 		// artwork setelah katalog dihapus.

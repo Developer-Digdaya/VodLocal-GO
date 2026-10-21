@@ -76,6 +76,9 @@ func NewClient(baseURL string, timeout time.Duration) *Client {
 // Code mengembalikan kode provider, selalu "dramahits".
 func (c *Client) Code() string { return providerCode }
 
+// Category mengembalikan kategori konten Dramahits, selalu short.
+func (c *Client) Category() string { return catalog.CategoryShort }
+
 // ListSeries mengambil satu halaman daftar series dari GET /series. Halaman
 // kurang dari 1 diperlakukan sebagai halaman 1.
 //

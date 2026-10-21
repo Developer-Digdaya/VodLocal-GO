@@ -97,15 +97,10 @@ var (
 )
 
 const (
-	// providerCode dan providerName adalah identitas provider yang ditulis ke
-	// tabel providers. Skema tidak punya kolom kategori; kategori "short"
-	// (catalog.CategoryShort) melekat pada provider ini dan pada
-	// titles.kind = 'series'.
+	// providerCode dan providerName adalah provider default untuk selection
+	// lama yang tidak mengisi provider.
 	providerCode = "dramahits"
 	providerName = "Dramahits"
-
-	// seriesKind adalah nilai kolom titles.kind untuk series.
-	seriesKind = "series"
 
 	// generationLabelFormat adalah format label generation mediafs.
 	generationLabelFormat = "gen-%06d"
@@ -144,8 +139,12 @@ type Config struct {
 	// Downloader dipakai untuk segmen dan poster. Bila nil dibuat satu dengan
 	// opsi default.
 	Downloader *download.Downloader
-	// Source adalah provider yang menyediakan daftar episode; wajib.
+	// Source adalah provider tunggal (kompatibilitas lama). Bila Sources
+	// diisi, Source diabaikan.
 	Source catalog.Source
+	// Sources adalah kumpulan provider berdasarkan kategori; wajib bila Source
+	// kosong.
+	Sources catalog.SourceSet
 	// Logger menerima log progres. Bila nil dipakai slog.Default().
 	Logger *slog.Logger
 	// Now memasok waktu sekarang. Bila nil dipakai time.Now.
@@ -185,13 +184,13 @@ type Config struct {
 // Service adalah worker yang memproses series terpilih menjadi satu generation
 // media. Service aman dipakai dari beberapa goroutine.
 type Service struct {
-	store  *store.Store
-	media  *mediafs.Manager
-	dl     *download.Downloader
-	source catalog.Source
-	log    *slog.Logger
-	nowFn  func() time.Time
-	client *http.Client
+	store   *store.Store
+	media   *mediafs.Manager
+	dl      *download.Downloader
+	sources catalog.SourceSet
+	log     *slog.Logger
+	nowFn   func() time.Time
+	client  *http.Client
 
 	// maxEpisodes adalah batas jumlah episode per series (0 = tanpa batas).
 	maxEpisodes int
@@ -217,8 +216,13 @@ func New(cfg Config) (*Service, error) {
 	if cfg.Media == nil {
 		return nil, errors.New("ingest: Config.Media wajib diisi")
 	}
-	if cfg.Source == nil {
-		return nil, errors.New("ingest: Config.Source wajib diisi")
+	if cfg.Source == nil && len(cfg.Sources) == 0 {
+		return nil, errors.New("ingest: Config.Source atau Config.Sources wajib diisi")
+	}
+
+	sources := cfg.Sources
+	if len(sources) == 0 {
+		sources = catalog.SourceSet{cfg.Source}
 	}
 
 	client := &http.Client{Timeout: playlistTimeout}
@@ -254,7 +258,7 @@ func New(cfg Config) (*Service, error) {
 		store:               cfg.Store,
 		media:               cfg.Media,
 		dl:                  dl,
-		source:              cfg.Source,
+		sources:             sources,
 		log:                 logger,
 		nowFn:               nowFn,
 		client:              client,
@@ -385,29 +389,28 @@ func (s *Service) checkStorageCapacity() error {
 		ErrInsufficientStorage, percent, s.storageBlockPercent, root)
 }
 
-// validateSelections memastikan daftar selection tidak kosong dan seluruhnya
-// berasal dari provider yang sama.
+// validateSelections memastikan daftar selection tidak kosong, setiap kategori
+// dikenal, source-nya tersedia, dan movie membawa stream_url.
 func (s *Service) validateSelections(selections []catalog.Series) error {
 	if len(selections) == 0 {
 		return ErrNoSelections
 	}
 
-	first := ""
-	for i, sel := range selections {
-		code := strings.ToLower(strings.TrimSpace(sel.Provider))
-		if code == "" {
-			// Selection tanpa provider dianggap milik provider paket ini.
-			code = providerCode
-		}
-		if i == 0 {
-			first = code
-		} else if code != first {
-			return fmt.Errorf("%w: %q dan %q", ErrMixedProviders, first, code)
+	for _, sel := range selections {
+		code := normalizeProvider(sel.Provider)
+		category := normalizeCategory(sel.Category)
+
+		switch category {
+		case catalog.CategoryShort, catalog.CategoryMovie, catalog.CategorySeries:
+		default:
+			return fmt.Errorf("ingest: kategori %q tidak dikenal untuk %q", category, firstNonEmpty(sel.Slug, sel.ID))
 		}
 
-		if cat := strings.TrimSpace(sel.Category); cat != "" && !strings.EqualFold(cat, catalog.CategoryShort) {
-			s.log.Warn("kategori selection bukan short, dianggap short",
-				"series", firstNonEmpty(sel.Slug, sel.ID), "category", cat)
+		if _, ok := s.sources.For(code, category); !ok {
+			return fmt.Errorf("ingest: source provider %q kategori %q tidak tersedia", code, category)
+		}
+		if category == catalog.CategoryMovie && strings.TrimSpace(sel.StreamURL) == "" {
+			return fmt.Errorf("ingest: movie %q tidak memiliki stream_url", firstNonEmpty(sel.Slug, sel.ID))
 		}
 	}
 	return nil
@@ -461,20 +464,29 @@ func (s *Service) run(ctx context.Context, st *runState) {
 
 // execute menjalankan sisa alur setelah baris database dan staging siap.
 func (s *Service) execute(ctx context.Context, st *runState) error {
-	provID, err := s.upsertProvider(ctx)
-	if err != nil {
-		return s.fail(ctx, st, err)
+	provIDs := make(map[string]int64)
+	for _, series := range st.selections {
+		code := normalizeProvider(series.Provider)
+		if _, ok := provIDs[code]; ok {
+			continue
+		}
+		id, err := s.upsertProvider(ctx, code)
+		if err != nil {
+			return s.fail(ctx, st, err)
+		}
+		provIDs[code] = id
 	}
 
 	// Satu baris generation_items per selection, idempotent dan best effort:
 	// kegagalan di sini tidak menggagalkan run.
-	s.seedGenerationItems(ctx, st, provID)
+	s.seedGenerationItems(ctx, st, provIDs)
 
 	for _, series := range st.selections {
 		if err := ctx.Err(); err != nil {
 			return s.fail(ctx, st, err)
 		}
-		if err := s.processSeries(ctx, st, provID, series); err != nil {
+		code := normalizeProvider(series.Provider)
+		if err := s.processSeries(ctx, st, provIDs[code], series); err != nil {
 			return s.fail(ctx, st, err)
 		}
 	}
@@ -557,6 +569,14 @@ func (s *Service) fail(ctx context.Context, st *runState, cause error) error {
 // 'failed' lewat defer. Series yang selesai tanpa satu pun episode berhasil
 // juga ditandai 'failed' karena tidak menghasilkan rendition yang bisa dipakai.
 func (s *Service) processSeries(ctx context.Context, st *runState, provID int64, series catalog.Series) (err error) {
+	provider := normalizeProvider(series.Provider)
+	category := normalizeCategory(series.Category)
+	src, ok := s.sources.For(provider, category)
+	if !ok {
+		return fmt.Errorf("ingest: source provider %q kategori %q tidak tersedia", provider, category)
+	}
+	kind := titleKind(category)
+
 	// slug dipakai untuk kolom katalog (titles.slug), kunci episode, dan log.
 	slug := safePathComponent(firstNonEmpty(series.Slug, series.ID))
 
@@ -580,16 +600,43 @@ func (s *Service) processSeries(ctx context.Context, st *runState, provID int64,
 	if strings.TrimSpace(series.PosterURL) != "" {
 		pr.step(ctx, stepPoster)
 	}
-	posterPath := s.fetchPoster(ctx, st, seriesDir, series.PosterURL)
+	posterPath := s.fetchPoster(ctx, st, provider, category, seriesDir, series.PosterURL)
 
-	titleID, err := s.upsertTitle(ctx, provID, series, slug, posterPath)
+	titleID, err := s.upsertTitle(ctx, provID, series, slug, posterPath, kind)
 	if err != nil {
 		return err
 	}
 	st.titles++
 
 	pr.step(ctx, stepEpisodes)
-	episodes, err := s.listEpisodes(ctx, firstNonEmpty(series.Slug, series.ID))
+
+	// Movie tidak punya endpoint episode: stream_url dari daftar langsung
+	// dipakai sebagai satu playable.
+	if category == catalog.CategoryMovie {
+		pr.setTotal(ctx, 1)
+		ep := catalog.Episode{
+			ID:      series.ID,
+			Slug:    series.Slug,
+			Title:   series.Title,
+			Season:  1,
+			Number:  1,
+			Streams: []catalog.Stream{{Device: "android", URL: series.StreamURL}},
+		}
+		pr.episodeStart(ctx, 1, 1)
+		res, epErr := s.processEpisode(ctx, st, titleID, provider, category, seriesDir, ep, 0, true)
+		if epErr != nil {
+			return epErr
+		}
+		pr.episodeDone(ctx, res)
+		if res.ready {
+			pr.finish(ctx)
+		} else {
+			pr.fail(ctx, fmt.Errorf("ingest: movie %s gagal disiapkan", slug))
+		}
+		return nil
+	}
+
+	episodes, err := s.listEpisodes(ctx, src, firstNonEmpty(series.Slug, series.ID))
 	if err != nil {
 		return err
 	}
@@ -605,6 +652,7 @@ func (s *Service) processSeries(ctx context.Context, st *runState, provID int64,
 	pr.setTotal(ctx, len(episodes))
 
 	s.log.Info("series diproses",
+		"provider", provider, "category", category,
 		"series", slug, "episodes", len(episodes), "poster", posterPath != "")
 
 	for i, ep := range episodes {
@@ -615,7 +663,7 @@ func (s *Service) processSeries(ctx context.Context, st *runState, provID int64,
 		season, number := episodeCoordinates(ep, i)
 		pr.episodeStart(ctx, season, number)
 
-		res, epErr := s.processEpisode(ctx, st, titleID, seriesDir, ep, i)
+		res, epErr := s.processEpisode(ctx, st, titleID, provider, category, seriesDir, ep, i, false)
 		if epErr != nil {
 			return epErr
 		}
@@ -636,12 +684,13 @@ func (s *Service) processSeries(ctx context.Context, st *runState, provID int64,
 	return nil
 }
 
-// listEpisodes mengambil seluruh halaman episode satu series.
-func (s *Service) listEpisodes(ctx context.Context, seriesSlug string) ([]catalog.Episode, error) {
+// listEpisodes mengambil seluruh halaman episode satu series dari source yang
+// sudah dipilih.
+func (s *Service) listEpisodes(ctx context.Context, src catalog.Source, seriesSlug string) ([]catalog.Episode, error) {
 	var out []catalog.Episode
 
 	for page := 1; page <= maxEpisodePages; page++ {
-		res, err := s.source.ListEpisodes(ctx, seriesSlug, page)
+		res, err := src.ListEpisodes(ctx, seriesSlug, page)
 		if err != nil {
 			return nil, fmt.Errorf("ingest: ListEpisodes(%s) halaman %d: %w", seriesSlug, page, err)
 		}
@@ -692,8 +741,11 @@ func episodeDirectory(ep catalog.Episode, season, number int) string {
 // kegagalan fatal (context dibatalkan, database, atau filesystem) yang
 // dikembalikan; kegagalan playlist/unduhan dicatat sebagai rendition gagal
 // lewat episodeResult.
-func (s *Service) processEpisode(ctx context.Context, st *runState, titleID int64, seriesDir string, ep catalog.Episode, index int) (episodeResult, error) {
+func (s *Service) processEpisode(ctx context.Context, st *runState, titleID int64, provider, category, seriesDir string, ep catalog.Episode, index int, movie bool) (episodeResult, error) {
 	episodeName := firstNonEmpty(ep.Slug, ep.ID, fmt.Sprintf("ep-%d", index+1))
+	if movie {
+		episodeName = firstNonEmpty(ep.Slug, ep.ID, "movie")
+	}
 
 	stream, ok := pickStream(ep.Streams)
 	if !ok {
@@ -703,13 +755,16 @@ func (s *Service) processEpisode(ctx context.Context, st *runState, titleID int6
 	}
 
 	season, number := episodeCoordinates(ep, index)
-	episodeDir := episodeDirectory(ep, season, number)
+	episodeDir := ""
+	if !movie {
+		episodeDir = episodeDirectory(ep, season, number)
+	}
 
 	// Selisih st.bytes dipakai sebagai jumlah byte episode ini, termasuk
 	// unduhan yang berakhir gagal di tengah jalan.
 	bytesBefore := st.bytes
 
-	rec, err := s.buildRendition(ctx, st, seriesDir, episodeDir, stream.URL)
+	rec, err := s.buildRendition(ctx, st, provider, category, seriesDir, episodeDir, stream.URL)
 	if err != nil {
 		if cerr := ctx.Err(); cerr != nil {
 			return episodeResult{}, cerr
@@ -726,11 +781,16 @@ func (s *Service) processEpisode(ctx context.Context, st *runState, titleID int6
 		durationSeconds = rec.duration
 	}
 
-	episodeID, err := s.upsertEpisode(ctx, titleID, ep, season, number)
-	if err != nil {
-		return episodeResult{}, err
+	var playableID int64
+	if movie {
+		playableID, err = s.upsertPlayable(ctx, titleID, nil, durationSeconds, rec.encrypted)
+	} else {
+		episodeID, episodeErr := s.upsertEpisode(ctx, titleID, ep, season, number)
+		if episodeErr != nil {
+			return episodeResult{}, episodeErr
+		}
+		playableID, err = s.upsertPlayable(ctx, titleID, &episodeID, durationSeconds, rec.encrypted)
 	}
-	playableID, err := s.upsertPlayable(ctx, titleID, episodeID, durationSeconds, rec.encrypted)
 	if err != nil {
 		return episodeResult{}, err
 	}
@@ -784,14 +844,14 @@ type renditionBuild struct {
 // segmennya di dalam staging, lalu memverifikasi hasilnya. seriesDir dan
 // episodeDir adalah komponen path folder series/episode (UUID provider atau
 // fallback-nya).
-func (s *Service) buildRendition(ctx context.Context, st *runState, seriesDir, episodeDir, streamURL string) (*renditionBuild, error) {
+func (s *Service) buildRendition(ctx context.Context, st *runState, provider, category, seriesDir, episodeDir, streamURL string) (*renditionBuild, error) {
 	media, finalURL, variant, variantURL, err := s.fetchMediaPlaylist(ctx, streamURL)
 	if err != nil {
 		return nil, err
 	}
 
 	quality := qualityLabel(variant.Width, variant.Height, variant.Bandwidth)
-	relDir := path.Join(providerCode, seriesKind, seriesDir, episodeDir, quality)
+	relDir := path.Join(provider, category, seriesDir, episodeDir, quality)
 	relPlaylist := path.Join(relDir, playlistFileName)
 	dirAbs := filepath.Join(st.stagingRoot(), filepath.FromSlash(relDir))
 
@@ -980,13 +1040,13 @@ func (s *Service) jobsFor(dirAbs, baseURL string, assets []hls.AssetRef) ([]down
 // lewat /media/<label>/<path> tanpa ArtworkRoot. Kegagalan unduhan hanya dicatat
 // di log dan menghasilkan string kosong, sehingga poster tidak pernah
 // menggagalkan episode.
-func (s *Service) fetchPoster(ctx context.Context, st *runState, seriesDir, posterURL string) string {
+func (s *Service) fetchPoster(ctx context.Context, st *runState, provider, category, seriesDir, posterURL string) string {
 	posterURL = strings.TrimSpace(posterURL)
 	if posterURL == "" {
 		return ""
 	}
 
-	rel := path.Join(providerCode, seriesKind, seriesDir, posterFileName)
+	rel := path.Join(provider, category, seriesDir, posterFileName)
 	dest := filepath.Join(st.stagingRoot(), filepath.FromSlash(rel))
 
 	res, err := s.dl.Download(ctx, []download.Job{{URL: posterURL, Dest: dest}})
@@ -999,32 +1059,37 @@ func (s *Service) fetchPoster(ctx context.Context, st *runState, seriesDir, post
 	return rel
 }
 
-// upsertProvider memastikan baris providers ada dan mengembalikan id-nya.
-func (s *Service) upsertProvider(ctx context.Context) (int64, error) {
+// upsertProvider memastikan baris providers untuk code ada dan mengembalikan
+// id-nya.
+func (s *Service) upsertProvider(ctx context.Context, code string) (int64, error) {
 	ctx, cancel := s.sqlCtx(ctx)
 	defer cancel()
 
+	code = normalizeProvider(code)
+	name := providerDisplayName(code)
+	category := providerDefaultCategory(code)
 	now := s.stamp()
+
 	var id int64
 	err := s.store.Write().QueryRowContext(ctx, `
-INSERT INTO providers (code, name, is_enabled, created_at, updated_at)
-VALUES (?, ?, 1, ?, ?)
+INSERT INTO providers (code, name, category, is_enabled, created_at, updated_at)
+VALUES (?, ?, ?, 1, ?, ?)
 ON CONFLICT(code) DO UPDATE SET
     name       = excluded.name,
     is_enabled = 1,
     updated_at = excluded.updated_at
 RETURNING id`,
-		providerCode, providerName, now, now).Scan(&id)
+		code, name, category, now, now).Scan(&id)
 	if err != nil {
-		return 0, fmt.Errorf("ingest: simpan provider %q: %w", providerCode, err)
+		return 0, fmt.Errorf("ingest: simpan provider %q: %w", code, err)
 	}
 	return id, nil
 }
 
-// upsertTitle menyimpan satu series dan mengembalikan id titles. slug mengisi
-// kolom titles.slug, sedangkan posterPath adalah path poster relatif terhadap
-// root generation (bukan terhadap ArtworkRoot).
-func (s *Service) upsertTitle(ctx context.Context, provID int64, series catalog.Series, slug, posterPath string) (int64, error) {
+// upsertTitle menyimpan satu judul dan mengembalikan id titles. slug mengisi
+// kolom titles.slug, posterPath relatif terhadap root generation, dan kind
+// adalah movie atau series.
+func (s *Service) upsertTitle(ctx context.Context, provID int64, series catalog.Series, slug, posterPath, kind string) (int64, error) {
 	ctx, cancel := s.sqlCtx(ctx)
 	defer cancel()
 
@@ -1049,7 +1114,7 @@ ON CONFLICT(provider_id, external_id) DO UPDATE SET
     fetched_at     = excluded.fetched_at,
     updated_at     = excluded.updated_at
 RETURNING id`,
-		provID, external, seriesKind, name, slug, nullString(series.Description),
+		provID, external, kind, name, slug, nullString(series.Description),
 		nullInt(int64(series.Year)), nullString(series.AgeRating), nullString(posterPath),
 		now, now, now).Scan(&id)
 	if err != nil {
@@ -1088,9 +1153,9 @@ RETURNING id`,
 	return id, nil
 }
 
-// upsertPlayable memastikan satu baris playables untuk episode dan
-// mengembalikan id-nya. Satu episode hanya punya satu playable (ux_playables_episode).
-func (s *Service) upsertPlayable(ctx context.Context, titleID, episodeID int64, durationSeconds int, encrypted bool) (int64, error) {
+// upsertPlayable memastikan satu baris playables untuk episode (episodeID
+// non-nil) atau movie (episodeID nil) dan mengembalikan id-nya.
+func (s *Service) upsertPlayable(ctx context.Context, titleID int64, episodeID *int64, durationSeconds int, encrypted bool) (int64, error) {
 	ctx, cancel := s.sqlCtx(ctx)
 	defer cancel()
 
@@ -1101,28 +1166,50 @@ func (s *Service) upsertPlayable(ctx context.Context, titleID, episodeID int64, 
 	}
 	duration := nullInt(int64(durationSeconds))
 
-	var id int64
-	err := s.store.Write().QueryRowContext(ctx,
-		`SELECT id FROM playables WHERE episode_id = ?`, episodeID).Scan(&id)
+	var (
+		id    int64
+		err   error
+		label string
+		query string
+		args  []any
+	)
+	if episodeID == nil {
+		label = "movie"
+		query = `SELECT id FROM playables WHERE title_id = ? AND episode_id IS NULL`
+		args = []any{titleID}
+	} else {
+		label = fmt.Sprintf("episode %d", *episodeID)
+		query = `SELECT id FROM playables WHERE episode_id = ?`
+		args = []any{*episodeID}
+	}
+
+	err = s.store.Write().QueryRowContext(ctx, query, args...).Scan(&id)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		err = s.store.Write().QueryRowContext(ctx, `
+		if episodeID == nil {
+			err = s.store.Write().QueryRowContext(ctx, `
+INSERT INTO playables (title_id, episode_id, duration_seconds, is_encrypted, created_at, updated_at)
+VALUES (?, NULL, ?, ?, ?, ?) RETURNING id`,
+				titleID, duration, enc, now, now).Scan(&id)
+		} else {
+			err = s.store.Write().QueryRowContext(ctx, `
 INSERT INTO playables (title_id, episode_id, duration_seconds, is_encrypted, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
-			titleID, episodeID, duration, enc, now, now).Scan(&id)
+				titleID, *episodeID, duration, enc, now, now).Scan(&id)
+		}
 		if err != nil {
-			return 0, fmt.Errorf("ingest: simpan playable episode %d: %w", episodeID, err)
+			return 0, fmt.Errorf("ingest: simpan playable %s: %w", label, err)
 		}
 		return id, nil
 	case err != nil:
-		return 0, fmt.Errorf("ingest: cari playable episode %d: %w", episodeID, err)
+		return 0, fmt.Errorf("ingest: cari playable %s: %w", label, err)
 	}
 
 	if _, err := s.store.Write().ExecContext(ctx, `
 UPDATE playables SET duration_seconds = ?, is_encrypted = ?, updated_at = ? WHERE id = ?`,
 		duration, enc, now, id,
 	); err != nil {
-		return 0, fmt.Errorf("ingest: perbarui playable episode %d: %w", episodeID, err)
+		return 0, fmt.Errorf("ingest: perbarui playable %s: %w", label, err)
 	}
 	return id, nil
 }
@@ -1533,6 +1620,59 @@ func safePathComponent(s string) string {
 		}
 	}
 	return out
+}
+
+// normalizeProvider mengembalikan kode provider lowercase; kosong berarti
+// provider default Dramahits.
+func normalizeProvider(code string) string {
+	code = strings.ToLower(strings.TrimSpace(code))
+	if code == "" {
+		return providerCode
+	}
+	return code
+}
+
+// normalizeCategory mengembalikan kategori lowercase; kosong berarti short.
+func normalizeCategory(category string) string {
+	category = strings.ToLower(strings.TrimSpace(category))
+	if category == "" {
+		return catalog.CategoryShort
+	}
+	return category
+}
+
+// titleKind memetakan kategori media ke nilai titles.kind.
+func titleKind(category string) string {
+	if category == catalog.CategoryMovie {
+		return "movie"
+	}
+	return "series"
+}
+
+// providerDisplayName mengembalikan nama tampilan provider.
+func providerDisplayName(code string) string {
+	switch code {
+	case providerCode:
+		return providerName
+	case "densgo":
+		return "Densgo"
+	default:
+		return code
+	}
+}
+
+// providerDefaultCategory adalah kategori yang disimpan di kolom
+// providers.category. Densgo tetap memakai "vod" sebagai naungan provider;
+// kategori per judul (movie/series) disimpan di generation_items dan path media.
+func providerDefaultCategory(code string) string {
+	switch code {
+	case providerCode:
+		return catalog.CategoryShort
+	case "densgo":
+		return "vod"
+	default:
+		return ""
+	}
 }
 
 // firstNonEmpty mengembalikan nilai pertama yang tidak kosong setelah di-trim.
