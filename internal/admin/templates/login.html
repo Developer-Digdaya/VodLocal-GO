@@ -3,14 +3,16 @@
   <p class="auth-brand"><strong>VodLocal Admin</strong></p>
   <form class="card" method="post" action="/login">
     <h1>Masuk panel admin</h1>
+    {{if .Flash}}<p class="flash{{if eq .FlashKind "error"}} error{{end}}" role="status">{{.Flash}}</p>{{end}}
+    {{if .Error}}<p class="flash error" role="alert">{{.Error}}</p>{{end}}
     <input type="hidden" name="_csrf" value="{{.CSRF}}">
     <p>
       <label for="username">Nama pengguna</label>
-      <input id="username" name="username" type="text" value="{{.Username}}" autocomplete="username" required class="full">
+      <input id="username" name="username" type="text" value="{{.Username}}" autocomplete="username" required class="full"{{if not .Username}} autofocus{{end}}>
     </p>
     <p>
       <label for="password">Kata sandi</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" required class="full">
+      <input id="password" name="password" type="password" autocomplete="current-password" required class="full"{{if .Username}} autofocus{{end}}>
     </p>
     <p><button type="submit">Masuk</button></p>
   </form>

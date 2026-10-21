@@ -17,9 +17,15 @@ header.top a.active { background: #1f5c93; color: #fff; }
 header.top .spacer { flex: 1 1 auto; }
 header.top .who { color: #b9d0e4; font-size: .85rem; margin-right: .5rem; }
 main { flex: 1 0 auto; width: 100%; max-width: 1120px; margin: 1.5rem auto; padding: 0 1rem 3rem; }
-main.auth { max-width: none; min-height: 100vh; margin: 0; display: flex; align-items: center; justify-content: center; padding: 1.5rem 1rem; }
-.auth-card { width: 100%; max-width: 380px; }
-.auth-brand { text-align: center; font-size: 1.1rem; color: #12324f; margin: 0 0 .75rem; }
+main.auth { max-width: none; min-height: 100vh; min-height: 100dvh; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem 1rem; }
+.auth-card { width: 100%; max-width: 400px; }
+.auth-brand { text-align: center; font-size: 1.15rem; letter-spacing: .01em; color: #12324f; margin: 0 0 1rem; }
+.auth-card .card { padding: 1.5rem; box-shadow: 0 12px 32px rgba(18, 50, 79, .08); }
+.auth-card h1 { margin-bottom: 1.25rem; }
+.auth-card .flash { margin: 0 0 1rem; }
+.auth-card label { font-weight: 600; }
+.auth-card input[type=text], .auth-card input[type=password] { padding: .5rem .6rem; }
+.auth-card button[type=submit] { width: 100%; padding: .55rem .8rem; font-size: .95rem; }
 h1 { font-size: 1.35rem; margin: 0 0 1rem; }
 h2 { font-size: 1rem; margin: 1.6rem 0 .5rem; }
 p { margin: .5rem 0; }
@@ -33,14 +39,19 @@ pre { overflow-x: auto; }
 .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .muted { color: #5b6672; }
 .small { font-size: .82rem; }
-.flash { background: #e7f6ec; border: 1px solid #b7e2c6; padding: .55rem .8rem; border-radius: .4rem; word-break: break-all; }
-.flash.error { background: #fdecec; border-color: #f3c0c0; }
+.flash { background: #e7f6ec; border: 1px solid #b7e2c6; padding: .55rem .8rem; border-radius: .4rem; overflow-wrap: anywhere; }
+.flash.error { background: #fdecec; border-color: #f3c0c0; color: #8a1f1a; }
 .notice { background: #fff6e5; border: 1px solid #f0d59a; padding: .55rem .8rem; border-radius: .4rem; }
 form.inline { display: inline; margin: 0; }
 button { font: inherit; font-size: .85rem; padding: .3rem .7rem; border-radius: .35rem; border: 1px solid #12324f; background: #12324f; color: #fff; cursor: pointer; }
 button.secondary { background: #fff; color: #12324f; }
 button.danger { border-color: #a3271f; background: #a3271f; }
+button:hover { background: #1c4b75; }
+button.secondary:hover { background: #eef4fa; }
+button.danger:hover { background: #8c211a; }
 button:disabled { opacity: .5; cursor: not-allowed; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #1f5c93; outline-offset: 2px; }
+input[type=text]:focus, input[type=password]:focus, input[type=number]:focus, select:focus { border-color: #1f5c93; }
 input[type=text], input[type=password], input[type=number], select { font: inherit; padding: .35rem .5rem; border: 1px solid #ccd3db; border-radius: .35rem; background: #fff; }
 label { display: block; font-size: .85rem; margin-bottom: .2rem; }
 .filters { display: flex; gap: .75rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 1rem; }
@@ -80,6 +91,7 @@ dialog.modal::backdrop { background: rgba(15, 23, 32, .45); }
   header.top .who { display: none; }
   main { margin: 1rem auto; padding: 0 .75rem 2rem; }
   main.auth { padding: 1rem; }
+  .auth-card .card { padding: 1.25rem; }
   h1 { font-size: 1.2rem; }
   .filters { gap: .5rem; }
   .filters > div { flex: 1 1 100%; }
@@ -93,6 +105,13 @@ dialog.modal::backdrop { background: rgba(15, 23, 32, .45); }
   .dialog-foot { flex-wrap: wrap; }
   .dialog-foot button { flex: 1 1 auto; }
   .tabs .tab { flex: 1 1 auto; }
+}
+
+@media (max-width: 420px) {
+  main.auth { padding: .75rem; }
+  .auth-card .card { padding: 1rem; }
+  .auth-card h1 { font-size: 1.15rem; }
+  .auth-brand { font-size: 1.05rem; }
 }
 </style>
 </head>
@@ -114,8 +133,10 @@ dialog.modal::backdrop { background: rgba(15, 23, 32, .45); }
 </header>
 {{end}}
 <main{{if not .User}} class="auth"{{end}}>
-{{if .Flash}}<p class="flash{{if eq .FlashKind "error"}} error{{end}}">{{.Flash}}</p>{{end}}
-{{if .Error}}<p class="flash error">{{.Error}}</p>{{end}}
+{{if .User}}
+{{if .Flash}}<p class="flash{{if eq .FlashKind "error"}} error{{end}}" role="status">{{.Flash}}</p>{{end}}
+{{if .Error}}<p class="flash error" role="alert">{{.Error}}</p>{{end}}
+{{end}}
 {{template "content" .}}
 </main>
 {{if .User}}<footer>VodLocal Admin {{.Version}} · {{.Now}}</footer>{{end}}
