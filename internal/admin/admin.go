@@ -1,10 +1,10 @@
 // Package admin menyediakan panel administrasi server-rendered untuk sistem
 // hiburan bus.
 //
-// Seluruh halaman dirender dengan html/template (tanpa templ, htmx, atau CDN)
-// dan mengikuti docs/api-spec.md §10: autentikasi lewat cookie sesi
-// httpserver.SessionManager, token CSRF double-submit pada setiap POST, dan
-// Cache-Control: no-store pada semua halaman.
+// Seluruh halaman dirender dengan html/template + Pico CSS yang di-embed ke
+// binary (tanpa CDN) dan mengikuti docs/api-spec.md §10: autentikasi lewat
+// cookie sesi httpserver.SessionManager, token CSRF double-submit pada setiap
+// POST, dan Cache-Control: no-store pada semua halaman.
 //
 // Paket ini hanya membaca/menulis tabel yang sudah ada (auth_users,
 // app_settings, devices, generations, sync_runs, generation_items) dan memakai
@@ -33,6 +33,9 @@ import (
 	"vodlocal/internal/store"
 	"vodlocal/internal/syncjob"
 )
+
+//go:embed assets/*
+var adminAssets embed.FS
 
 const (
 	// timeLayout adalah format waktu ISO-8601 UTC yang dipakai seluruh tabel.
@@ -198,6 +201,19 @@ func New(cfg Config) (*Admin, error) {
 	}, nil
 }
 
+// handlePicoCSS menyajikan CSS Pico yang di-embed ke binary.
+func (a *Admin) handlePicoCSS(w http.ResponseWriter, r *http.Request) {
+	data, err := adminAssets.ReadFile("assets/pico.min.css")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(data)
+}
+
 // Mount memasang seluruh route panel admin pada r.
 //
 // Route publik hanya GET/POST /login; sisanya berada di bawah middleware
@@ -207,6 +223,10 @@ func (a *Admin) Mount(r chi.Router) {
 		return
 	}
 	csrf := httpserver.CSRF(a.sessions)
+
+	// Aset CSS Pico di-vendor ke binary agar panel tetap berfungsi tanpa
+	// internet. Route ini publik dan tidak memerlukan sesi admin.
+	r.Get("/assets/pico.min.css", a.handlePicoCSS)
 
 	r.Get("/login", a.handleLoginForm)
 	r.With(csrf).Post("/login", a.handleLoginSubmit)

@@ -39,9 +39,9 @@
 
 {{if .Runs}}
 <div class="table-wrap">
-  <table>
+  <table class="striped">
     <thead>
-      <tr><th>ID</th><th>Status</th><th>Fase</th><th>Pemicu</th><th>Rendition</th><th>Mulai</th><th>Selesai</th></tr>
+      <tr><th scope="col">ID</th><th scope="col">Status</th><th scope="col">Fase</th><th scope="col">Pemicu</th><th scope="col">Rendition</th><th scope="col">Mulai</th><th scope="col">Selesai</th></tr>
     </thead>
     <tbody>
     {{range .Runs}}
@@ -60,13 +60,13 @@
 </div>
 
 {{if gt .TotalPages 1}}
-<div class="pager" aria-label="Pagination riwayat sinkronisasi">
+<div class="pager" role="navigation" aria-label="Pagination riwayat sinkronisasi">
   {{if .HasPrev}}
   <a href="?q={{urlquery .Q}}&amp;status={{urlquery .Status}}&amp;per_page={{.PerPage}}&amp;page={{.PrevPage}}">‹ Sebelumnya</a>
   {{else}}
   <span class="muted small">‹ Sebelumnya</span>
   {{end}}
-  <span class="page-info">Halaman {{.Page}} / {{.TotalPages}}</span>
+  <span class="page-info" aria-current="page">Halaman {{.Page}} / {{.TotalPages}}</span>
   {{if .HasNext}}
   <a href="?q={{urlquery .Q}}&amp;status={{urlquery .Status}}&amp;per_page={{.PerPage}}&amp;page={{.NextPage}}">Berikutnya ›</a>
   {{else}}
@@ -102,9 +102,9 @@
       <div class="content-grid" id="content-list">
         <p class="muted">Memuat daftar konten…</p>
       </div>
-      <div class="pager">
+      <div class="pager" role="group" aria-label="Navigasi halaman konten">
         <button type="button" class="secondary" id="prev-page" disabled>‹ Sebelumnya</button>
-        <span class="small muted" id="page-indicator">Halaman 1 / 1</span>
+        <span class="small muted" id="page-indicator" aria-live="polite" aria-current="page">Halaman 1 / 1</span>
         <button type="button" class="secondary" id="next-page" disabled>Berikutnya ›</button>
       </div>
     </section>

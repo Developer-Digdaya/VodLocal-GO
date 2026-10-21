@@ -31,37 +31,37 @@
 {{end}}
 
 <h2>Katalog</h2>
-<div class="grid">
-  <div class="card"><div class="muted small">Judul</div><div>{{.Catalog.Titles}}</div></div>
-  <div class="card"><div class="muted small">Episode</div><div>{{.Catalog.Episodes}}</div></div>
-  <div class="card"><div class="muted small">Playable</div><div>{{.Catalog.Playables}}</div></div>
-  <div class="card"><div class="muted small">Rendition siap (generation aktif)</div><div>{{.Catalog.RenditionsReady}}</div></div>
+<div class="card-grid">
+  <article class="card"><div class="muted small">Judul</div><div>{{.Catalog.Titles}}</div></article>
+  <article class="card"><div class="muted small">Episode</div><div>{{.Catalog.Episodes}}</div></article>
+  <article class="card"><div class="muted small">Playable</div><div>{{.Catalog.Playables}}</div></article>
+  <article class="card"><div class="muted small">Rendition siap (generation aktif)</div><div>{{.Catalog.RenditionsReady}}</div></article>
 </div>
 
 <h2>Perangkat</h2>
 <p class="small"><a href="/devices">kelola perangkat</a></p>
-<div class="grid">
-  <div class="card"><div class="muted small">Terdaftar</div><div>{{.Devices.Registered}}</div></div>
-  <div class="card"><div class="muted small">Online (5 menit terakhir)</div><div>{{.Devices.Online}}</div></div>
+<div class="card-grid">
+  <article class="card"><div class="muted small">Terdaftar</div><div>{{.Devices.Registered}}</div></article>
+  <article class="card"><div class="muted small">Online (5 menit terakhir)</div><div>{{.Devices.Online}}</div></article>
 </div>
 
 <h2>Penyimpanan</h2>
-<div class="grid">
-  <div class="card">
+<div class="card-grid">
+  <article class="card">
     <div class="muted small">Terpakai (seluruh generation)</div>
     <div>{{bytes .Storage.UsedBytes}}</div>
-  </div>
+  </article>
   {{if .Storage.HasPercent}}
-  <div class="card">
+  <article class="card">
     <div class="muted small">Pemakaian disk</div>
     <div>{{.Storage.Percent}}% dari {{bytes .Storage.TotalBytes}}</div>
     <progress max="100" value="{{.Storage.Percent}}">{{.Storage.Percent}}%</progress>
-  </div>
+  </article>
   {{end}}
-  <div class="card">
+  <article class="card">
     <div class="muted small">Ambang peringatan</div>
     <div>{{.Storage.WarnPercent}}%</div>
-  </div>
+  </article>
 </div>
 
 <h2>Sinkronisasi terakhir</h2>

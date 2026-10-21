@@ -1,5 +1,7 @@
 {{define "content"}}
-<h1>{{.Status}}</h1>
-<p class="flash error" style="word-break: break-word">{{.Message}}</p>
-<p class="small"><a href="/">Kembali ke dashboard</a> · <a href="/login">Halaman masuk</a></p>
+<article class="narrow">
+  <h1>{{.Status}}</h1>
+  <p class="flash error" style="word-break: break-word">{{.Message}}</p>
+  <p class="small"><a href="/">Kembali ke dashboard</a> · <a href="/login">Halaman masuk</a></p>
+</article>
 {{end}}

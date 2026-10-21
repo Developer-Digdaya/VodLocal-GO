@@ -13,15 +13,15 @@
 
 <div class="table-wrap">
   <table class="detail-table">
-    <tr><th>Status</th><td>{{.Run.Status}}</td></tr>
-    <tr><th>Fase</th><td>{{if .Run.Phase}}{{.Run.Phase}}{{else}}—{{end}}</td></tr>
-    <tr><th>Pemicu</th><td>{{.Run.Trigger}}{{if and .Run.TriggeredBy (ne .Run.TriggeredBy .Run.Trigger)}} oleh {{.Run.TriggeredBy}}{{end}}</td></tr>
-    <tr><th>Rendition</th><td>{{.Run.RenditionsReady}}/{{.Run.TotalRenditions}} siap · {{.Run.RenditionsFailed}} gagal</td></tr>
-    <tr><th>Byte terunduh</th><td>{{bytes .Run.BytesDownloaded}}</td></tr>
-    <tr><th>Dibuat</th><td>{{when .Run.CreatedAt}}</td></tr>
-    <tr><th>Mulai</th><td>{{when .Run.StartedAt}}</td></tr>
-    <tr><th>Selesai</th><td>{{when .Run.FinishedAt}}</td></tr>
-    {{if .Run.ErrorMessage}}<tr><th>Error</th><td class="small">{{.Run.ErrorMessage}}</td></tr>{{end}}
+    <tr><th scope="row">Status</th><td>{{.Run.Status}}</td></tr>
+    <tr><th scope="row">Fase</th><td>{{if .Run.Phase}}{{.Run.Phase}}{{else}}—{{end}}</td></tr>
+    <tr><th scope="row">Pemicu</th><td>{{.Run.Trigger}}{{if and .Run.TriggeredBy (ne .Run.TriggeredBy .Run.Trigger)}} oleh {{.Run.TriggeredBy}}{{end}}</td></tr>
+    <tr><th scope="row">Rendition</th><td>{{.Run.RenditionsReady}}/{{.Run.TotalRenditions}} siap · {{.Run.RenditionsFailed}} gagal</td></tr>
+    <tr><th scope="row">Byte terunduh</th><td>{{bytes .Run.BytesDownloaded}}</td></tr>
+    <tr><th scope="row">Dibuat</th><td>{{when .Run.CreatedAt}}</td></tr>
+    <tr><th scope="row">Mulai</th><td>{{when .Run.StartedAt}}</td></tr>
+    <tr><th scope="row">Selesai</th><td>{{when .Run.FinishedAt}}</td></tr>
+    {{if .Run.ErrorMessage}}<tr><th scope="row">Error</th><td class="small">{{.Run.ErrorMessage}}</td></tr>{{end}}
   </table>
 </div>
 
