@@ -3,7 +3,7 @@
 // API ini menyediakan dua jenis konten dari satu basis URL, dibedakan oleh
 // parameter type pada endpoint daftar:
 //
-//	GET /index?q=&type=movie|series&page=N&limit=10
+//	GET /index?q=&type=movie|series&page=N&limit=30
 //	GET /episodes?seriesId=10144
 //
 // Karena itu NewClient menerima kategori, dan satu Client hanya melayani satu
@@ -42,7 +42,7 @@ const (
 	DefaultTimeout = provider.DefaultTimeout
 
 	// pageLimit adalah jumlah item per halaman yang diminta ke API.
-	pageLimit = 10
+	pageLimit = 30
 
 	// userAgent dikirim pada setiap permintaan. Dens TV berada di belakang
 	// CDN yang menolak klien tanpa User-Agent yang masuk akal.

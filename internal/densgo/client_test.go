@@ -148,7 +148,7 @@ func TestListSeriesMovieRequestAndMapping(t *testing.T) {
 	if want := basePath + "/index"; last.path != want {
 		t.Errorf("path = %q, want %q", last.path, want)
 	}
-	wantQuery := map[string]string{"q": "", "type": "movie", "page": "1", "limit": "10"}
+	wantQuery := map[string]string{"q": "", "type": "movie", "page": "1", "limit": "30"}
 	if !reflect.DeepEqual(last.query, wantQuery) {
 		t.Errorf("query = %v, want %v", last.query, wantQuery)
 	}
@@ -193,7 +193,7 @@ func TestListSeriesSeriesStreamURLEmpty(t *testing.T) {
 		t.Fatalf("ListSeries() error = %v", err)
 	}
 
-	wantQuery := map[string]string{"q": "", "type": "series", "page": "1", "limit": "10"}
+	wantQuery := map[string]string{"q": "", "type": "series", "page": "1", "limit": "30"}
 	if !reflect.DeepEqual(last.query, wantQuery) {
 		t.Errorf("query = %v, want %v", last.query, wantQuery)
 	}
@@ -324,8 +324,8 @@ func TestListSeriesRequestedPage(t *testing.T) {
 	if got := last.query["page"]; got != "7" {
 		t.Errorf("page = %q, want %q", got, "7")
 	}
-	if got := last.query["limit"]; got != "10" {
-		t.Errorf("limit = %q, want %q", got, "10")
+	if got := last.query["limit"]; got != "30" {
+		t.Errorf("limit = %q, want %q", got, "30")
 	}
 }
 
