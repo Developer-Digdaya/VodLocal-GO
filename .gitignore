@@ -1,0 +1,27 @@
+# Build output
+/bin/
+/dist/
+*.exe
+*.dll
+
+# Runtime data
+/data/
+*.db
+*.db-wal
+*.db-shm
+
+# Environment & secrets
+.env
+.env.*
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Command Code workspace state
+.commandcode/
+
+# Dokumentasi internal (disimpan lokal, tidak dipublikasikan)
+/docs/

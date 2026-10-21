@@ -1,0 +1,18 @@
+{{define "content"}}
+<div class="auth-card">
+  <p class="auth-brand"><strong>VodLocal Admin</strong></p>
+  <form class="card" method="post" action="/login">
+    <h1>Masuk panel admin</h1>
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <p>
+      <label for="username">Nama pengguna</label>
+      <input id="username" name="username" type="text" value="{{.Username}}" autocomplete="username" required class="full">
+    </p>
+    <p>
+      <label for="password">Kata sandi</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required class="full">
+    </p>
+    <p><button type="submit">Masuk</button></p>
+  </form>
+</div>
+{{end}}

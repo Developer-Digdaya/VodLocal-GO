@@ -1,0 +1,58 @@
+{{define "generation_items"}}
+<div id="sync-items" data-run-id="{{.RunID}}" data-active="{{if .Active}}1{{else}}0{{end}}" data-status="{{.Status}}">
+  {{if .Items}}
+  <p class="small muted">
+    <span class="nowrap">{{.Summary.SeriesDone}}/{{.Summary.SeriesTotal}} series selesai</span>
+    · <span class="nowrap">{{.Summary.EpisodesDone}}/{{.Summary.EpisodesTotal}} episode selesai</span>
+    · <span class="nowrap">{{.Summary.Percent}}% keseluruhan</span>
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Series</th>
+          <th>Kategori</th>
+          <th>Status</th>
+          <th>Episode</th>
+          <th>Rendition</th>
+          <th>Progres</th>
+          <th>Langkah</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+      {{range .Items}}
+        <tr>
+          <td>
+            {{.SeriesTitle}}
+            {{if .SeriesExternalID}}<br><span class="muted small">{{.SeriesExternalID}}</span>{{end}}
+          </td>
+          <td>{{if .Category}}{{.Category}}{{else}}—{{end}}</td>
+          <td>{{.Status}}</td>
+          <td class="nowrap">
+            {{.EpisodesDone}}/{{.TotalEpisodes}}
+            {{if .EpisodesFailed}}<span class="muted small">· gagal {{.EpisodesFailed}}</span>{{end}}
+          </td>
+          <td class="nowrap">
+            {{.RenditionsReady}}/{{.RenditionsFailed}}
+            <span class="muted small">ready/gagal</span>
+          </td>
+          <td class="nowrap">
+            <span class="item-progress"><progress max="100" value="{{.ProgressPercent}}">{{.ProgressPercent}}%</progress></span>
+            <span class="small">{{.ProgressPercent}}%</span>
+          </td>
+          <td class="small">
+            {{if .CurrentStep}}{{.CurrentStep}}{{else}}—{{end}}
+            {{if .CurrentEpisode}}<span class="muted">· {{.CurrentEpisode}}</span>{{end}}
+          </td>
+          <td class="small">{{if .ErrorMessage}}{{.ErrorMessage}}{{else}}—{{end}}</td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="muted">Belum ada item konten</p>
+  {{end}}
+</div>
+{{end}}

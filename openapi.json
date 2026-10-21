@@ -1,0 +1,1716 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "VodLocal — API Hiburan Bus",
+    "version": "1.0.0",
+    "description": "API server hiburan lokal bus.\n\n**Envelope response**\n\nSemua endpoint JSON memakai bentuk:\n\n```json\n{\"code\":0,\"msg\":\"Berhasil\",\"data\":{},\"errors\":[]}\n```\n\n- `code = 0` sukses, `1` sukses sebagian, `>= 1000` error.\n- `errors` selalu array (tidak pernah `null`).\n- `data` selalu ada; bernilai `null` saat error.\n\n**Autentikasi**\n\n- API tablet: header `Authorization: Bearer <token>` (token dari `POST /api/v1/devices/register`).\n- Panel admin: cookie sesi `mc_session` + field `_csrf` pada POST form.\n- Media `/media/*` dan `/artwork/*` tidak memakai auth (LAN bus terisolasi).\n\n**Waktu**\n\nSemua timestamp di API memakai ISO-8601 UTC. Panel admin menampilkan WIB (UTC+7).\n\n**Kode error**\n\nRegistry lengkap ada di `docs/standar-response.md`. Contoh yang sering dipakai:\n`1003` validasi, `2000` tanpa token, `2004` device nonaktif, `3000` judul tidak ada,\n`3003` media belum siap, `4001` sync sedang berjalan, `4009` belum ada generation aktif,\n`8000` progress tidak ada."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8080",
+      "description": "Development lokal"
+    },
+    {
+      "url": "http://192.0.2.10",
+      "description": "Server produksi — ganti 192.0.2.10 dengan IP server"
+    }
+  ],
+  "tags": [
+    { "name": "Health", "description": "Status proses dan kesiapan server." },
+    { "name": "Device", "description": "Registrasi dan identitas tablet." },
+    { "name": "Catalog", "description": "Katalog judul, episode, genre, dan pencarian." },
+    { "name": "Playback", "description": "Metadata playable dan master playlist HLS." },
+    { "name": "Progress", "description": "Posisi tonton per perangkat." },
+    { "name": "Media", "description": "Berkas media statis (playlist, segmen, subtitle, poster)." },
+    { "name": "Admin", "description": "Panel admin (session + CSRF). Sebagian mengembalikan HTML/redirect." }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Cek proses hidup",
+        "description": "Selalu 200 bila proses berjalan. Tidak memakai envelope.",
+        "responses": {
+          "200": {
+            "description": "Proses hidup",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Health" },
+                "example": { "status": "ok", "version": "0.1.0", "uptime_seconds": 86400 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Cek kesiapan (DB + generation aktif)",
+        "responses": {
+          "200": {
+            "description": "Siap melayani katalog dan media",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Ready" },
+                "example": { "status": "ready", "generation": "gen-000042" }
+              }
+            }
+          },
+          "503": {
+            "description": "Belum siap",
+            "content": {
+              "application/json": {
+                "example": { "status": "not_ready", "reason": "no_active_generation" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/register": {
+      "post": {
+        "tags": ["Device"],
+        "summary": "Registrasi tablet",
+        "description": "Mendaftarkan tablet dan mengembalikan token Bearer. Token hanya ditampilkan sekali.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DeviceRegisterRequest" },
+              "example": {
+                "name": "Tablet Kursi 12",
+                "seat_number": "12",
+                "mac_address": "AA:BB:CC:DD:EE:12",
+                "app_version": "1.0.3"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Device dibuat",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DeviceRegisterResponse" },
+                "example": {
+                  "code": 0,
+                  "msg": "Berhasil",
+                  "data": {
+                    "device": { "id": 12, "name": "Tablet Kursi 12", "seat_number": "12" },
+                    "token": "mc_7f3a9c2e5b1d4a6f8e0c9a1b2c3d4e5f"
+                  },
+                  "errors": []
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "MAC sudah terdaftar",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 2003,
+                  "msg": "Perangkat sudah terdaftar",
+                  "data": null,
+                  "errors": []
+                }
+              }
+            }
+          },
+          "422": { "$ref": "#/components/responses/ValidationError" }
+        }
+      }
+    },
+    "/api/v1/devices/me": {
+      "get": {
+        "tags": ["Device"],
+        "summary": "Info device saat ini",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Data device",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DeviceResponse" },
+                "example": {
+                  "code": 0,
+                  "msg": "Berhasil",
+                  "data": {
+                    "id": 12,
+                    "name": "Tablet Kursi 12",
+                    "seat_number": "12",
+                    "is_active": true,
+                    "last_seen_at": "2026-10-21T04:30:00Z",
+                    "created_at": "2026-10-21T04:00:00Z"
+                  },
+                  "errors": []
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/DeviceDisabled" }
+        }
+      }
+    },
+    "/api/v1/devices/me/heartbeat": {
+      "post": {
+        "tags": ["Device"],
+        "summary": "Tandai device online",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Heartbeat diterima",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/NullDataResponse" },
+                "example": { "code": 0, "msg": "Berhasil", "data": null, "errors": [] }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/DeviceDisabled" }
+        }
+      }
+    },
+    "/api/v1/genres": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "Daftar genre",
+        "description": "Tidak mensyaratkan generation aktif.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/PerPage" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daftar genre",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GenresResponse" },
+                "example": {
+                  "code": 0,
+                  "msg": "Berhasil",
+                  "data": {
+                    "items": [
+                      { "id": 1, "name": "Drama", "slug": "drama" },
+                      { "id": 2, "name": "Romantis", "slug": "romantis" }
+                    ],
+                    "meta": { "page": 1, "per_page": 50, "total": 2, "total_pages": 1 }
+                  },
+                  "errors": []
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/titles": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "Daftar judul",
+        "description": "Hanya judul yang punya minimal satu rendition `ready` pada generation aktif.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/PerPage" },
+          { "$ref": "#/components/parameters/Query" },
+          { "$ref": "#/components/parameters/Kind" },
+          { "$ref": "#/components/parameters/Genre" },
+          { "$ref": "#/components/parameters/Sort" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daftar judul",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TitlesResponse" },
+                "example": {
+                  "code": 0,
+                  "msg": "Berhasil",
+                  "data": {
+                    "items": [
+                      {
+                        "id": 12,
+                        "provider": "dramahits",
+                        "kind": "series",
+                        "title": "Ketika Cinta Menjadi Benci",
+                        "slug": "ketika-cinta-menjadi-benci",
+                        "synopsis": "Kesalahpahaman di hari pernikahan...",
+                        "release_year": 2025,
+                        "content_rating": "Dewasa 17+",
+                        "language": "id",
+                        "poster_url": "/media/gen-000042/dramahits/series/9d1c-4f5a/poster.jpg",
+                        "backdrop_url": null,
+                        "duration_seconds": null,
+                        "episode_count": 80,
+                        "genres": ["Drama", "Romansa"],
+                        "playable": true
+                      }
+                    ],
+                    "meta": { "page": 1, "per_page": 50, "total": 1, "total_pages": 1 }
+                  },
+                  "errors": []
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "503": { "$ref": "#/components/responses/NoActiveGeneration" }
+        }
+      }
+    },
+    "/api/v1/titles/{id}": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "Detail judul",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/TitleID" }],
+        "responses": {
+          "200": {
+            "description": "Detail judul",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TitleDetailResponse" },
+                "example": {
+                  "code": 0,
+                  "msg": "Berhasil",
+                  "data": {
+                    "id": 12,
+                    "kind": "series",
+                    "episode_count": 80,
+                    "first_playable_id": 9001,
+                    "seasons": [{ "season_number": 1, "episode_count": 80 }]
+                  },
+                  "errors": []
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/TitleNotFound" },
+          "503": { "$ref": "#/components/responses/NoActiveGeneration" }
+        }
+      }
+    },
+    "/api/v1/titles/{id}/episodes": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "Daftar episode",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TitleID" },
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/PerPage" },
+          {
+            "name": "season",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1 },
+            "example": 1
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daftar episode",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EpisodesResponse" },
+                "example": {
+                  "code": 0,
+                  "msg": "Berhasil",
+                  "data": {
+                    "items": [
+                      {
+                        "id": 301,
+                        "season_number": 1,
+                        "episode_number": 1,
+                        "name": "Episode 01",
+                        "synopsis": "Kesalahpahaman di hari pernikahan...",
+                        "duration_seconds": 138,
+                        "air_date": "2026-07-01",
+                        "still_url": null,
+                        "playable_id": 9001,
+                        "ready": true
+                      }
+                    ],
+                    "meta": { "page": 1, "per_page": 50, "total": 80, "total_pages": 2 }
+                  },
+                  "errors": []
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/TitleNotFound" },
+          "503": { "$ref": "#/components/responses/NoActiveGeneration" }
+        }
+      }
+    },
+    "/api/v1/search": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "Pencarian judul + episode",
+        "description": "`q` wajib minimal 2 karakter. Hasil dipisah per kelompok.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/QueryRequired" },
+          { "$ref": "#/components/parameters/SearchType" },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 },
+            "example": 20
+          },
+          { "$ref": "#/components/parameters/Kind" },
+          { "$ref": "#/components/parameters/Genre" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hasil pencarian",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SearchResponse" },
+                "example": {
+                  "code": 0,
+                  "msg": "Berhasil",
+                  "data": {
+                    "titles": [
+                      {
+                        "id": 12,
+                        "kind": "series",
+                        "title": "Ketika Cinta Menjadi Benci",
+                        "release_year": 2025,
+                        "poster_url": "/media/gen-000042/dramahits/series/9d1c-4f5a/poster.jpg",
+                        "genres": ["Drama", "Romansa"],
+                        "episode_count": 80,
+                        "match": "title"
+                      }
+                    ],
+                    "episodes": [
+                      {
+                        "id": 301,
+                        "title_id": 12,
+                        "title": "Ketika Cinta Menjadi Benci",
+                        "season_number": 1,
+                        "episode_number": 3,
+                        "name": "Episode 03",
+                        "playable_id": 9003,
+                        "ready": true,
+                        "still_url": null,
+                        "match": "episode"
+                      }
+                    ],
+                    "meta": { "limit": 20, "titles_total": 1, "episodes_total": 1 }
+                  },
+                  "errors": []
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": {
+            "description": "Query pencarian tidak valid",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 3005,
+                  "msg": "Kata kunci pencarian tidak valid",
+                  "data": null,
+                  "errors": [{ "field": "q", "message": "minimal 2 karakter" }]
+                }
+              }
+            }
+          },
+          "503": { "$ref": "#/components/responses/NoActiveGeneration" }
+        }
+      }
+    },
+    "/api/v1/playables/{id}": {
+      "get": {
+        "tags": ["Playback"],
+        "summary": "Detail playable + varian + subtitle",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/PlayableID" }],
+        "responses": {
+          "200": {
+            "description": "Detail playable",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlayableResponse" },
+                "example": {
+                  "code": 0,
+                  "msg": "Berhasil",
+                  "data": {
+                    "id": 9003,
+                    "title_id": 12,
+                    "title": "Ketika Cinta Menjadi Benci",
+                    "episode": { "season_number": 1, "episode_number": 3, "name": "Episode 03" },
+                    "duration_seconds": 138,
+                    "generation": "gen-000042",
+                    "master_playlist_url": "/api/v1/playables/9003/master.m3u8",
+                    "variants": [
+                      { "quality": "360p", "width": 640, "height": 360, "bitrate_kbps": 270, "ready": true }
+                    ],
+                    "subtitles": [
+                      {
+                        "lang": "id",
+                        "label": "Indonesian",
+                        "format": "vtt",
+                        "url": "/media/gen-000042/dramahits/series/9d1c-4f5a/ep-03/subtitle-id.vtt"
+                      }
+                    ]
+                  },
+                  "errors": []
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": {
+            "description": "Playable tidak ditemukan",
+            "content": {
+              "application/json": {
+                "example": { "code": 3002, "msg": "Media tidak ditemukan", "data": null, "errors": [] }
+              }
+            }
+          },
+          "409": { "$ref": "#/components/responses/PlayableNotReady" }
+        }
+      }
+    },
+    "/api/v1/playables/{id}/master.m3u8": {
+      "get": {
+        "tags": ["Playback"],
+        "summary": "Master playlist HLS (dinamis)",
+        "description": "Dihasilkan dari rendition `ready` pada generation aktif. Dikecualikan dari envelope JSON.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/PlayableID" }],
+        "responses": {
+          "200": {
+            "description": "Playlist HLS",
+            "headers": {
+              "Cache-Control": { "schema": { "type": "string" }, "example": "no-cache" }
+            },
+            "content": {
+              "application/vnd.apple.mpegurl": {
+                "schema": { "type": "string" },
+                "example": "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-INDEPENDENT-SEGMENTS\n\n#EXT-X-STREAM-INF:BANDWIDTH=270000,RESOLUTION=640x360\n/media/gen-000042/dramahits/series/9d1c-4f5a/ep-03/360p/index.m3u8\n"
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "$ref": "#/components/responses/PlayableNotReady" }
+        }
+      }
+    },
+    "/api/v1/progress": {
+      "get": {
+        "tags": ["Progress"],
+        "summary": "Daftar lanjut tonton",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 },
+            "example": 20
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daftar progress",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProgressListResponse" },
+                "example": {
+                  "code": 0,
+                  "msg": "Berhasil",
+                  "data": {
+                    "items": [
+                      {
+                        "playable_id": 9003,
+                        "title_id": 12,
+                        "title": "Ketika Cinta Menjadi Benci",
+                        "episode": { "season_number": 1, "episode_number": 3 },
+                        "poster_url": "/media/gen-000042/dramahits/series/9d1c-4f5a/poster.jpg",
+                        "position_seconds": 42,
+                        "duration_seconds": 138,
+                        "progress_percent": 30,
+                        "completed": false,
+                        "updated_at": "2026-10-21T04:31:00Z"
+                      }
+                    ],
+                    "meta": { "limit": 20, "total": 1 }
+                  },
+                  "errors": []
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["Progress"],
+        "summary": "Simpan posisi tonton (upsert)",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProgressSaveRequest" },
+              "example": {
+                "playable_id": 9003,
+                "position_seconds": 42,
+                "duration_seconds": 138,
+                "completed": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tersimpan",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/NullDataResponse" },
+                "example": { "code": 0, "msg": "Berhasil", "data": null, "errors": [] }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": {
+            "description": "Playable tidak ditemukan",
+            "content": {
+              "application/json": {
+                "example": { "code": 3002, "msg": "Media tidak ditemukan", "data": null, "errors": [] }
+              }
+            }
+          },
+          "422": {
+            "description": "Data progress tidak valid",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 8001,
+                  "msg": "Data posisi tonton tidak valid",
+                  "data": null,
+                  "errors": [{ "field": "position_seconds", "message": "harus >= 0" }]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/progress/{playable_id}": {
+      "get": {
+        "tags": ["Progress"],
+        "summary": "Posisi satu playable",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "playable_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" },
+            "example": 9003
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Progress ditemukan",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProgressItemResponse" },
+                "example": {
+                  "code": 0,
+                  "msg": "Berhasil",
+                  "data": {
+                    "playable_id": 9003,
+                    "title_id": 12,
+                    "title": "Ketika Cinta Menjadi Benci",
+                    "episode": { "season_number": 1, "episode_number": 3 },
+                    "poster_url": "/media/gen-000042/dramahits/series/9d1c-4f5a/poster.jpg",
+                    "position_seconds": 42,
+                    "duration_seconds": 138,
+                    "progress_percent": 30,
+                    "completed": false,
+                    "updated_at": "2026-10-21T04:31:00Z"
+                  },
+                  "errors": []
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": {
+            "description": "Belum ada progress",
+            "content": {
+              "application/json": {
+                "example": { "code": 8000, "msg": "Riwayat tonton tidak ditemukan", "data": null, "errors": [] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/{generation}/{filePath}": {
+      "get": {
+        "tags": ["Media"],
+        "summary": "Ambil berkas media",
+        "description": "Menyajikan playlist (`index.m3u8`), segmen (`seg-*.ts`), subtitle (`.vtt`), dan poster (`.jpg`) dari generation tertentu. Mendukung `Range`. Tidak memakai auth dan tidak memakai envelope JSON.",
+        "parameters": [
+          {
+            "name": "generation",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^gen-[0-9]{6}$" },
+            "example": "gen-000042"
+          },
+          {
+            "name": "filePath",
+            "in": "path",
+            "required": true,
+            "allowReserved": true,
+            "schema": { "type": "string" },
+            "description": "Path relatif terhadap root generation, boleh mengandung `/`.",
+            "example": "dramahits/series/9d1c-4f5a/ep-03/360p/index.m3u8"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Berkas media",
+            "content": {
+              "application/vnd.apple.mpegurl": { "schema": { "type": "string", "format": "binary" } },
+              "video/mp2t": { "schema": { "type": "string", "format": "binary" } },
+              "text/vtt": { "schema": { "type": "string", "format": "binary" } },
+              "image/jpeg": { "schema": { "type": "string", "format": "binary" } },
+              "application/octet-stream": { "schema": { "type": "string", "format": "binary" } }
+            }
+          },
+          "206": {
+            "description": "Partial content (Range)",
+            "content": { "video/mp2t": { "schema": { "type": "string", "format": "binary" } } }
+          },
+          "404": { "description": "Berkas atau generation tidak ditemukan" },
+          "416": { "description": "Range tidak dapat dipenuhi" }
+        }
+      }
+    },
+    "/artwork/{filePath}": {
+      "get": {
+        "tags": ["Media"],
+        "summary": "Artwork legacy",
+        "description": "Dipakai untuk poster dari layout lama (`VODLOCAL_ARTWORK_ROOT`). Konten baru menyimpan poster di dalam generation (`/media/...`).",
+        "parameters": [
+          {
+            "name": "filePath",
+            "in": "path",
+            "required": true,
+            "allowReserved": true,
+            "schema": { "type": "string" },
+            "example": "dramahits/series-uji/poster.jpg"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Berkas gambar",
+            "content": { "image/jpeg": { "schema": { "type": "string", "format": "binary" } } }
+          },
+          "404": { "description": "Tidak ditemukan" }
+        }
+      }
+    },
+    "/api/v1/admin/overview": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Statistik dashboard (JSON)",
+        "security": [{ "adminSession": [] }],
+        "responses": {
+          "200": {
+            "description": "Statistik",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AdminOverviewResponse" },
+                "example": {
+                  "code": 0,
+                  "msg": "Berhasil",
+                  "data": {
+                    "generation": { "id": 42, "label": "gen-000042", "status": "active", "total_bytes": 91234567890 },
+                    "catalog": { "titles": 95, "episodes": 7600, "playables": 7600, "renditions_ready": 7600 },
+                    "devices": { "registered": 100, "online": 87 },
+                    "storage": { "used_bytes": 98123456789, "free_bytes": 0, "used_percent": 0 },
+                    "sync": { "id": null, "status": "idle" }
+                  },
+                  "errors": []
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/AdminUnauthorized" }
+        }
+      }
+    },
+    "/content/short": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Daftar series Dramahits untuk modal List Content",
+        "security": [{ "adminSession": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "default": 1 },
+            "example": 1
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Satu halaman series",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ContentShortResponse" },
+                "example": {
+                  "code": 0,
+                  "msg": "Berhasil",
+                  "data": {
+                    "items": [
+                      {
+                        "provider": "dramahits",
+                        "category": "short",
+                        "id": "019ef284-5326-71da-ad45-18da55b9576d",
+                        "slug": "ketika-cinta-menjadi-benci",
+                        "title": "Ketika Cinta Menjadi Benci",
+                        "description": "Kesalahpahaman di hari pernikahan...",
+                        "poster_url": "https://<origin-host>/04/.../poster.jpg",
+                        "year": 2025,
+                        "episode_count": 80,
+                        "age_rating": "Dewasa 17+",
+                        "genres": ["Drama", "Romansa"],
+                        "published_at": "2026-10-20T10:46:00+07:00",
+                        "already_added": false
+                      }
+                    ],
+                    "meta": { "page": 1, "per_page": 30, "total": 95, "last_page": 4 }
+                  },
+                  "errors": []
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/AdminUnauthorized" }
+        }
+      }
+    },
+    "/content/select": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Antrekan series terpilih",
+        "description": "Membuat run ingest + generation baru. Mengembalikan redirect 303 ke /sync.",
+        "security": [{ "adminSession": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": ["_csrf", "provider", "slug"],
+                "properties": {
+                  "_csrf": { "type": "string", "example": "csrf-token" },
+                  "provider": { "type": "string", "enum": ["dramahits"], "example": "dramahits" },
+                  "slug": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "example": ["ketika-cinta-menjadi-benci", "misteri-kematian-saudari-kembarku"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "303": {
+            "description": "Run dibuat, redirect ke /sync",
+            "headers": { "Location": { "schema": { "type": "string" }, "example": "/sync" } }
+          },
+          "409": { "$ref": "#/components/responses/SyncAlreadyRunning" },
+          "507": {
+            "description": "Ruang penyimpanan tidak mencukupi (preflight >= ambang blokir)",
+            "content": {
+              "text/html": {
+                "example": "<h1>Penyimpanan penuh</h1><p>Ruang penyimpanan tidak mencukupi; hapus konten lama terlebih dahulu.</p>"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/content/purge": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Hapus semua konten + storage + katalog",
+        "description": "Menolak bila ada run sync/ingest aktif. Menghapus semua generation, folder media, katalog yatim, dan artwork legacy. Provider/device/settings tidak dihapus.",
+        "security": [{ "adminSession": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": ["_csrf", "confirm"],
+                "properties": {
+                  "_csrf": { "type": "string", "example": "csrf-token" },
+                  "confirm": { "type": "string", "enum": ["PURGE"], "example": "PURGE" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "303": { "description": "Semua konten dihapus, redirect ke /sync" },
+          "400": { "description": "Konfirmasi tidak sesuai" },
+          "409": {
+            "description": "Masih ada run aktif",
+            "content": { "text/html": { "example": "<h1>Masih ada proses sync/ingest berjalan.</h1>" } }
+          }
+        }
+      }
+    },
+    "/storage/items/{id}/delete": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Hapus satu konten (series) dari storage",
+        "description": "Menghapus folder series + poster, renditions, subtitles, dan generation_items untuk konten tersebut. Catalog orphan ikut dibersihkan.",
+        "security": [{ "adminSession": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" },
+            "description": "ID generation_items",
+            "example": 500
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": ["_csrf", "confirm"],
+                "properties": {
+                  "_csrf": { "type": "string", "example": "csrf-token" },
+                  "confirm": { "type": "string", "enum": ["DELETE"], "example": "DELETE" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "303": {
+            "description": "Konten dihapus, redirect ke /storage",
+            "headers": { "Location": { "schema": { "type": "string" }, "example": "/storage" } }
+          },
+          "400": { "description": "Konfirmasi tidak sesuai" },
+          "404": { "description": "Item tidak ditemukan" }
+        }
+      }
+    },
+    "/sync/{id}/items": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Progres konten per series (JSON/HTML)",
+        "security": [{ "adminSession": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" },
+            "description": "ID sync run",
+            "example": 1
+          },
+          {
+            "name": "Accept",
+            "in": "header",
+            "required": false,
+            "schema": { "type": "string", "default": "application/json" },
+            "example": "application/json"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daftar item + ringkasan",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SyncItemsResponse" },
+                "example": {
+                  "code": 0,
+                  "msg": "Berhasil",
+                  "data": {
+                    "items": [
+                      {
+                        "series_title": "Ketika Cinta Menjadi Benci",
+                        "series_external_id": "ketika-cinta-menjadi-benci",
+                        "category": "short",
+                        "status": "running",
+                        "total_episodes": 80,
+                        "episodes_done": 12,
+                        "episodes_failed": 0,
+                        "renditions_ready": 12,
+                        "renditions_failed": 0,
+                        "bytes_downloaded": 73400320,
+                        "progress_percent": 15,
+                        "current_step": "segments",
+                        "current_episode": "S01E13",
+                        "error_message": ""
+                      }
+                    ],
+                    "summary": {
+                      "series_total": 1,
+                      "series_done": 0,
+                      "episodes_done": 12,
+                      "episodes_total": 80,
+                      "progress_percent": 15
+                    }
+                  },
+                  "errors": []
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/AdminUnauthorized" },
+          "404": { "description": "Run tidak ditemukan" }
+        }
+      }
+    },
+    "/login": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Login admin (form)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": ["_csrf", "username", "password"],
+                "properties": {
+                  "_csrf": { "type": "string" },
+                  "username": { "type": "string", "example": "admin" },
+                  "password": { "type": "string", "format": "password", "example": "contoh-password" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "303": {
+            "description": "Login berhasil, redirect ke /",
+            "headers": { "Location": { "schema": { "type": "string" }, "example": "/" } }
+          },
+          "401": {
+            "description": "Kredensial salah",
+            "content": { "text/html": { "example": "<h1>Masuk panel admin</h1><p>Nama pengguna atau kata sandi salah.</p>" } }
+          }
+        }
+      }
+    },
+    "/logout": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Logout admin",
+        "security": [{ "adminSession": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": ["_csrf"],
+                "properties": { "_csrf": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "303": {
+            "description": "Logout, redirect ke /login",
+            "headers": { "Location": { "schema": { "type": "string" }, "example": "/login" } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Token device dari POST /api/v1/devices/register."
+      },
+      "adminSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "mc_session",
+        "description": "Cookie sesi admin setelah login. POST form juga wajib menyertakan field `_csrf`."
+      }
+    },
+    "parameters": {
+      "Page": {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 1, "default": 1 },
+        "example": 1
+      },
+      "PerPage": {
+        "name": "per_page",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 },
+        "example": 50
+      },
+      "Query": {
+        "name": "q",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "example": "cinta"
+      },
+      "QueryRequired": {
+        "name": "q",
+        "in": "query",
+        "required": true,
+        "schema": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "example": "cinta"
+      },
+      "Kind": {
+        "name": "kind",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string", "enum": ["movie", "series"] },
+        "example": "series"
+      },
+      "Genre": {
+        "name": "genre",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string" },
+        "description": "Slug genre.",
+        "example": "drama"
+      },
+      "Sort": {
+        "name": "sort",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": ["-updated_at", "updated_at", "title", "-title", "-release_year", "release_year"],
+          "default": "-updated_at"
+        },
+        "example": "-updated_at"
+      },
+      "SearchType": {
+        "name": "type",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string", "enum": ["all", "title", "episode"], "default": "all" },
+        "example": "all"
+      },
+      "TitleID": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "integer", "format": "int64" },
+        "example": 12
+      },
+      "PlayableID": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "integer", "format": "int64" },
+        "example": 9003
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Token tidak ada atau tidak valid",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" },
+            "example": { "code": 2000, "msg": "Autentikasi diperlukan", "data": null, "errors": [] }
+          }
+        }
+      },
+      "AdminUnauthorized": {
+        "description": "Session admin tidak ada/kedaluwarsa",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" },
+            "example": { "code": 2005, "msg": "Sesi telah berakhir", "data": null, "errors": [] }
+          }
+        }
+      },
+      "DeviceDisabled": {
+        "description": "Device dinonaktifkan admin",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" },
+            "example": { "code": 2004, "msg": "Perangkat dinonaktifkan", "data": null, "errors": [] }
+          }
+        }
+      },
+      "ValidationError": {
+        "description": "Validasi input gagal",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" },
+            "example": {
+              "code": 1003,
+              "msg": "Data yang dikirim tidak valid",
+              "data": null,
+              "errors": [
+                { "field": "per_page", "message": "maksimal 200" },
+                { "field": "q", "message": "minimal 2 karakter" }
+              ]
+            }
+          }
+        }
+      },
+      "TitleNotFound": {
+        "description": "Judul tidak ditemukan",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" },
+            "example": { "code": 3000, "msg": "Judul tidak ditemukan", "data": null, "errors": [] }
+          }
+        }
+      },
+      "PlayableNotReady": {
+        "description": "Media belum siap",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" },
+            "example": { "code": 3003, "msg": "Media belum selesai diunduh", "data": null, "errors": [] }
+          }
+        }
+      },
+      "NoActiveGeneration": {
+        "description": "Belum ada generation aktif",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" },
+            "example": { "code": 4009, "msg": "Belum ada versi media aktif", "data": null, "errors": [] }
+          }
+        }
+      },
+      "SyncAlreadyRunning": {
+        "description": "Masih ada run yang berjalan",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" },
+            "example": { "code": 4001, "msg": "Masih ada sinkronisasi yang berjalan", "data": null, "errors": [] }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Detail": {
+        "type": "object",
+        "required": ["field", "message"],
+        "properties": {
+          "field": { "type": "string", "example": "per_page" },
+          "message": { "type": "string", "example": "maksimal 200" }
+        }
+      },
+      "SuccessEnvelope": {
+        "type": "object",
+        "required": ["code", "msg", "errors"],
+        "properties": {
+          "code": { "type": "integer", "example": 0 },
+          "msg": { "type": "string", "example": "Berhasil" },
+          "errors": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Detail" },
+            "example": []
+          }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["code", "msg", "data", "errors"],
+        "properties": {
+          "code": { "type": "integer", "example": 3000 },
+          "msg": { "type": "string", "example": "Judul tidak ditemukan" },
+          "data": { "nullable": true, "example": null },
+          "errors": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Detail" },
+            "example": []
+          }
+        }
+      },
+      "Meta": {
+        "type": "object",
+        "properties": {
+          "page": { "type": "integer", "example": 1 },
+          "per_page": { "type": "integer", "example": 50 },
+          "total": { "type": "integer", "example": 95 },
+          "total_pages": { "type": "integer", "example": 2 }
+        }
+      },
+      "NullDataResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SuccessEnvelope" },
+          {
+            "type": "object",
+            "properties": { "data": { "nullable": true, "example": null } }
+          }
+        ]
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "ok" },
+          "version": { "type": "string", "example": "0.1.0" },
+          "uptime_seconds": { "type": "integer", "example": 86400 }
+        }
+      },
+      "Ready": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "ready" },
+          "generation": { "type": "string", "example": "gen-000042" }
+        }
+      },
+      "DeviceRegisterRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 100, "example": "Tablet Kursi 12" },
+          "seat_number": { "type": "string", "maxLength": 20, "example": "12" },
+          "mac_address": { "type": "string", "example": "AA:BB:CC:DD:EE:12" },
+          "app_version": { "type": "string", "maxLength": 20, "example": "1.0.3" }
+        }
+      },
+      "DeviceSummary": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "example": 12 },
+          "name": { "type": "string", "example": "Tablet Kursi 12" },
+          "seat_number": { "type": "string", "nullable": true, "example": "12" }
+        }
+      },
+      "DeviceRegisterData": {
+        "type": "object",
+        "properties": {
+          "device": { "$ref": "#/components/schemas/DeviceSummary" },
+          "token": { "type": "string", "example": "mc_7f3a9c2e5b1d4a6f8e0c9a1b2c3d4e5f" }
+        }
+      },
+      "DeviceRegisterResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SuccessEnvelope" },
+          {
+            "type": "object",
+            "properties": { "data": { "$ref": "#/components/schemas/DeviceRegisterData" } }
+          }
+        ]
+      },
+      "DeviceData": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "example": 12 },
+          "name": { "type": "string", "example": "Tablet Kursi 12" },
+          "seat_number": { "type": "string", "nullable": true, "example": "12" },
+          "is_active": { "type": "boolean", "example": true },
+          "last_seen_at": { "type": "string", "format": "date-time", "example": "2026-10-21T04:30:00Z" },
+          "created_at": { "type": "string", "format": "date-time", "example": "2026-10-21T04:00:00Z" }
+        }
+      },
+      "DeviceResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SuccessEnvelope" },
+          { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/DeviceData" } } }
+        ]
+      },
+      "Genre": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "name": { "type": "string", "example": "Drama" },
+          "slug": { "type": "string", "example": "drama" }
+        }
+      },
+      "GenrePage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Genre" } },
+          "meta": { "$ref": "#/components/schemas/Meta" }
+        }
+      },
+      "GenresResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SuccessEnvelope" },
+          { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/GenrePage" } } }
+        ]
+      },
+      "Title": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "example": 12 },
+          "provider": { "type": "string", "example": "dramahits" },
+          "kind": { "type": "string", "enum": ["movie", "series"], "example": "series" },
+          "title": { "type": "string", "example": "Ketika Cinta Menjadi Benci" },
+          "slug": { "type": "string", "example": "ketika-cinta-menjadi-benci" },
+          "synopsis": { "type": "string", "nullable": true },
+          "release_year": { "type": "integer", "nullable": true, "example": 2025 },
+          "content_rating": { "type": "string", "nullable": true, "example": "Dewasa 17+" },
+          "language": { "type": "string", "nullable": true, "example": "id" },
+          "poster_url": { "type": "string", "nullable": true, "example": "/media/gen-000042/dramahits/series/9d1c-4f5a/poster.jpg" },
+          "backdrop_url": { "type": "string", "nullable": true, "example": null },
+          "duration_seconds": { "type": "integer", "nullable": true, "example": null },
+          "episode_count": { "type": "integer", "example": 80 },
+          "genres": { "type": "array", "items": { "type": "string" }, "example": ["Drama", "Romansa"] },
+          "playable": { "type": "boolean", "example": true }
+        }
+      },
+      "TitlePage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Title" } },
+          "meta": { "$ref": "#/components/schemas/Meta" }
+        }
+      },
+      "TitlesResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SuccessEnvelope" },
+          { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/TitlePage" } } }
+        ]
+      },
+      "TitleDetail": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "example": 12 },
+          "kind": { "type": "string", "example": "series" },
+          "episode_count": { "type": "integer", "example": 80 },
+          "first_playable_id": { "type": "integer", "format": "int64", "nullable": true, "example": 9001 },
+          "seasons": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "season_number": { "type": "integer", "example": 1 },
+                "episode_count": { "type": "integer", "example": 80 }
+              }
+            }
+          }
+        }
+      },
+      "TitleDetailResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SuccessEnvelope" },
+          { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/TitleDetail" } } }
+        ]
+      },
+      "Episode": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "example": 301 },
+          "season_number": { "type": "integer", "example": 1 },
+          "episode_number": { "type": "integer", "example": 1 },
+          "name": { "type": "string", "nullable": true, "example": "Episode 01" },
+          "synopsis": { "type": "string", "nullable": true },
+          "duration_seconds": { "type": "integer", "nullable": true, "example": 138 },
+          "air_date": { "type": "string", "nullable": true, "example": "2026-07-01" },
+          "still_url": { "type": "string", "nullable": true, "example": null },
+          "playable_id": { "type": "integer", "format": "int64", "nullable": true, "example": 9001 },
+          "ready": { "type": "boolean", "example": true }
+        }
+      },
+      "EpisodePage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Episode" } },
+          "meta": { "$ref": "#/components/schemas/Meta" }
+        }
+      },
+      "EpisodesResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SuccessEnvelope" },
+          { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/EpisodePage" } } }
+        ]
+      },
+      "SearchData": {
+        "type": "object",
+        "properties": {
+          "titles": { "type": "array", "items": { "$ref": "#/components/schemas/Title" } },
+          "episodes": { "type": "array", "items": { "$ref": "#/components/schemas/Episode" } },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "limit": { "type": "integer", "example": 20 },
+              "titles_total": { "type": "integer", "example": 1 },
+              "episodes_total": { "type": "integer", "example": 1 }
+            }
+          }
+        }
+      },
+      "SearchResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SuccessEnvelope" },
+          { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/SearchData" } } }
+        ]
+      },
+      "Variant": {
+        "type": "object",
+        "properties": {
+          "quality": { "type": "string", "example": "360p" },
+          "width": { "type": "integer", "example": 640 },
+          "height": { "type": "integer", "example": 360 },
+          "bitrate_kbps": { "type": "integer", "example": 270 },
+          "ready": { "type": "boolean", "example": true }
+        }
+      },
+      "Subtitle": {
+        "type": "object",
+        "properties": {
+          "lang": { "type": "string", "example": "id" },
+          "label": { "type": "string", "example": "Indonesian" },
+          "format": { "type": "string", "example": "vtt" },
+          "url": { "type": "string", "example": "/media/gen-000042/dramahits/series/9d1c-4f5a/ep-03/subtitle-id.vtt" }
+        }
+      },
+      "PlayableData": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "example": 9003 },
+          "title_id": { "type": "integer", "format": "int64", "example": 12 },
+          "title": { "type": "string", "example": "Ketika Cinta Menjadi Benci" },
+          "episode": {
+            "type": "object",
+            "properties": {
+              "season_number": { "type": "integer", "example": 1 },
+              "episode_number": { "type": "integer", "example": 3 },
+              "name": { "type": "string", "example": "Episode 03" }
+            }
+          },
+          "duration_seconds": { "type": "integer", "nullable": true, "example": 138 },
+          "generation": { "type": "string", "example": "gen-000042" },
+          "master_playlist_url": { "type": "string", "example": "/api/v1/playables/9003/master.m3u8" },
+          "variants": { "type": "array", "items": { "$ref": "#/components/schemas/Variant" } },
+          "subtitles": { "type": "array", "items": { "$ref": "#/components/schemas/Subtitle" } }
+        }
+      },
+      "PlayableResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SuccessEnvelope" },
+          { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/PlayableData" } } }
+        ]
+      },
+      "ProgressSaveRequest": {
+        "type": "object",
+        "required": ["playable_id", "position_seconds"],
+        "properties": {
+          "playable_id": { "type": "integer", "format": "int64", "example": 9003 },
+          "position_seconds": { "type": "integer", "minimum": 0, "example": 42 },
+          "duration_seconds": { "type": "integer", "minimum": 0, "example": 138 },
+          "completed": { "type": "boolean", "default": false, "example": false }
+        }
+      },
+      "ProgressItem": {
+        "type": "object",
+        "properties": {
+          "playable_id": { "type": "integer", "format": "int64", "example": 9003 },
+          "title_id": { "type": "integer", "format": "int64", "example": 12 },
+          "title": { "type": "string", "example": "Ketika Cinta Menjadi Benci" },
+          "episode": {
+            "type": "object",
+            "properties": {
+              "season_number": { "type": "integer", "example": 1 },
+              "episode_number": { "type": "integer", "example": 3 }
+            }
+          },
+          "poster_url": { "type": "string", "nullable": true, "example": "/media/gen-000042/dramahits/series/9d1c-4f5a/poster.jpg" },
+          "position_seconds": { "type": "integer", "example": 42 },
+          "duration_seconds": { "type": "integer", "nullable": true, "example": 138 },
+          "progress_percent": { "type": "integer", "example": 30 },
+          "completed": { "type": "boolean", "example": false },
+          "updated_at": { "type": "string", "format": "date-time", "example": "2026-10-21T04:31:00Z" }
+        }
+      },
+      "ProgressItemResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SuccessEnvelope" },
+          { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/ProgressItem" } } }
+        ]
+      },
+      "ProgressListData": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/ProgressItem" } },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "limit": { "type": "integer", "example": 20 },
+              "total": { "type": "integer", "example": 1 }
+            }
+          }
+        }
+      },
+      "ProgressListResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SuccessEnvelope" },
+          { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/ProgressListData" } } }
+        ]
+      },
+      "AdminOverviewResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SuccessEnvelope" },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "generation": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "integer", "example": 42 },
+                      "label": { "type": "string", "example": "gen-000042" },
+                      "status": { "type": "string", "example": "active" },
+                      "total_bytes": { "type": "integer", "format": "int64", "example": 91234567890 }
+                    }
+                  },
+                  "catalog": {
+                    "type": "object",
+                    "properties": {
+                      "titles": { "type": "integer", "example": 95 },
+                      "episodes": { "type": "integer", "example": 7600 },
+                      "playables": { "type": "integer", "example": 7600 },
+                      "renditions_ready": { "type": "integer", "example": 7600 }
+                    }
+                  },
+                  "devices": {
+                    "type": "object",
+                    "properties": {
+                      "registered": { "type": "integer", "example": 100 },
+                      "online": { "type": "integer", "example": 87 }
+                    }
+                  },
+                  "storage": {
+                    "type": "object",
+                    "properties": {
+                      "used_bytes": { "type": "integer", "format": "int64", "example": 98123456789 },
+                      "free_bytes": { "type": "integer", "format": "int64", "example": 0 },
+                      "used_percent": { "type": "integer", "example": 0 }
+                    }
+                  },
+                  "sync": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "integer", "nullable": true, "example": null },
+                      "status": { "type": "string", "example": "idle" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ContentShortItem": {
+        "type": "object",
+        "properties": {
+          "provider": { "type": "string", "example": "dramahits" },
+          "category": { "type": "string", "example": "short" },
+          "id": { "type": "string", "example": "019ef284-5326-71da-ad45-18da55b9576d" },
+          "slug": { "type": "string", "example": "ketika-cinta-menjadi-benci" },
+          "title": { "type": "string", "example": "Ketika Cinta Menjadi Benci" },
+          "description": { "type": "string" },
+          "poster_url": { "type": "string" },
+          "year": { "type": "integer", "example": 2025 },
+          "episode_count": { "type": "integer", "example": 80 },
+          "age_rating": { "type": "string", "example": "Dewasa 17+" },
+          "genres": { "type": "array", "items": { "type": "string" } },
+          "published_at": { "type": "string" },
+          "already_added": { "type": "boolean", "example": false }
+        }
+      },
+      "ContentShortData": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/ContentShortItem" } },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "page": { "type": "integer", "example": 1 },
+              "per_page": { "type": "integer", "example": 30 },
+              "total": { "type": "integer", "example": 95 },
+              "last_page": { "type": "integer", "example": 4 }
+            }
+          }
+        }
+      },
+      "ContentShortResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SuccessEnvelope" },
+          { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/ContentShortData" } } }
+        ]
+      },
+      "SyncItem": {
+        "type": "object",
+        "properties": {
+          "series_title": { "type": "string", "example": "Ketika Cinta Menjadi Benci" },
+          "series_external_id": { "type": "string", "example": "ketika-cinta-menjadi-benci" },
+          "category": { "type": "string", "example": "short" },
+          "status": { "type": "string", "enum": ["pending", "running", "done", "failed", "skipped"], "example": "running" },
+          "total_episodes": { "type": "integer", "example": 80 },
+          "episodes_done": { "type": "integer", "example": 12 },
+          "episodes_failed": { "type": "integer", "example": 0 },
+          "renditions_ready": { "type": "integer", "example": 12 },
+          "renditions_failed": { "type": "integer", "example": 0 },
+          "bytes_downloaded": { "type": "integer", "format": "int64", "example": 73400320 },
+          "progress_percent": { "type": "integer", "minimum": 0, "maximum": 100, "example": 15 },
+          "current_step": { "type": "string", "example": "segments" },
+          "current_episode": { "type": "string", "example": "S01E13" },
+          "error_message": { "type": "string", "example": "" }
+        }
+      },
+      "SyncItemsData": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/SyncItem" } },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "series_total": { "type": "integer", "example": 1 },
+              "series_done": { "type": "integer", "example": 0 },
+              "episodes_done": { "type": "integer", "example": 12 },
+              "episodes_total": { "type": "integer", "example": 80 },
+              "progress_percent": { "type": "integer", "example": 15 }
+            }
+          }
+        }
+      },
+      "SyncItemsResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SuccessEnvelope" },
+          { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/SyncItemsData" } } }
+        ]
+      }
+    }
+  }
+}

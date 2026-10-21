@@ -1,0 +1,81 @@
+{{define "content"}}
+<h1>Dashboard</h1>
+
+{{if .ActiveSync}}
+<h2>Sinkronisasi berjalan</h2>
+{{template "sync_status" .ActiveSyncStatus}}
+<p class="small"><a href="/sync/{{.ActiveSync.ID}}">Detail run #{{.ActiveSync.ID}}</a></p>
+{{end}}
+
+{{if .Storage.Warn}}
+<p class="flash error">
+  Peringatan: pemakaian penyimpanan {{.Storage.Percent}}% sudah melewati ambang
+  {{.Storage.WarnPercent}}%.
+</p>
+{{end}}
+
+<h2>Versi media aktif</h2>
+{{if .Generation}}
+<div class="table-wrap">
+  <table>
+    <tr><th>Label</th><td><code>{{.Generation.Label}}</code></td></tr>
+    <tr><th>Status</th><td>{{.Generation.Status}}</td></tr>
+    <tr><th>Ukuran</th><td>{{bytes .Generation.TotalBytes}} <span class="muted small">({{.Generation.TotalBytes}} byte)</span></td></tr>
+    <tr><th>Jumlah berkas</th><td>{{.Generation.FileCount}}</td></tr>
+    <tr><th>Dibuat</th><td>{{when .Generation.CreatedAt}}</td></tr>
+  </table>
+</div>
+{{else}}
+<p class="flash error">Belum ada versi media aktif. Jalankan sinkronisasi terlebih dahulu.</p>
+{{end}}
+
+<h2>Katalog</h2>
+<div class="grid">
+  <div class="card"><div class="muted small">Judul</div><div>{{.Catalog.Titles}}</div></div>
+  <div class="card"><div class="muted small">Episode</div><div>{{.Catalog.Episodes}}</div></div>
+  <div class="card"><div class="muted small">Playable</div><div>{{.Catalog.Playables}}</div></div>
+  <div class="card"><div class="muted small">Rendition siap (generation aktif)</div><div>{{.Catalog.RenditionsReady}}</div></div>
+</div>
+
+<h2>Perangkat</h2>
+<div class="grid">
+  <div class="card"><div class="muted small">Terdaftar</div><div>{{.Devices.Registered}}</div></div>
+  <div class="card"><div class="muted small">Online (5 menit terakhir)</div><div>{{.Devices.Online}}</div></div>
+</div>
+
+<h2>Penyimpanan</h2>
+<div class="grid">
+  <div class="card">
+    <div class="muted small">Terpakai (seluruh generation)</div>
+    <div>{{bytes .Storage.UsedBytes}}</div>
+  </div>
+  {{if .Storage.HasPercent}}
+  <div class="card">
+    <div class="muted small">Pemakaian disk</div>
+    <div>{{.Storage.Percent}}% dari {{bytes .Storage.TotalBytes}}</div>
+    <progress max="100" value="{{.Storage.Percent}}">{{.Storage.Percent}}%</progress>
+  </div>
+  {{end}}
+  <div class="card">
+    <div class="muted small">Ambang peringatan</div>
+    <div>{{.Storage.WarnPercent}}%</div>
+  </div>
+</div>
+
+<h2>Sinkronisasi terakhir</h2>
+{{if .LastSync}}
+<div class="table-wrap">
+  <table>
+    <tr><th>Run</th><td><a href="/sync/{{.LastSync.ID}}">#{{.LastSync.ID}}</a></td></tr>
+    <tr><th>Status</th><td>{{.LastSync.Status}}{{if .LastSync.Phase}} · {{.LastSync.Phase}}{{end}}</td></tr>
+    <tr><th>Pemicu</th><td>{{.LastSync.Trigger}}{{if and .LastSync.TriggeredBy (ne .LastSync.TriggeredBy .LastSync.Trigger)}} oleh {{.LastSync.TriggeredBy}}{{end}}</td></tr>
+    <tr><th>Rendition</th><td>{{.LastSync.RenditionsReady}}/{{.LastSync.TotalRenditions}} siap · {{.LastSync.RenditionsFailed}} gagal</td></tr>
+    <tr><th>Mulai</th><td>{{when .LastSync.StartedAt}}</td></tr>
+    <tr><th>Selesai</th><td>{{when .LastSync.FinishedAt}}</td></tr>
+    {{if .LastSync.ErrorMessage}}<tr><th>Error</th><td class="small">{{.LastSync.ErrorMessage}}</td></tr>{{end}}
+  </table>
+</div>
+{{else}}
+<p class="muted">Belum ada riwayat sinkronisasi.</p>
+{{end}}
+{{end}}

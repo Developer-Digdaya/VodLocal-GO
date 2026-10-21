@@ -1,0 +1,2 @@
+# Script shell harus memakai LF agar tetap bisa dijalankan di Git Bash/WSL.
+*.sh text eol=lf

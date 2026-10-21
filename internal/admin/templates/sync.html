@@ -1,0 +1,401 @@
+{{define "content"}}
+<h1>Sinkronisasi</h1>
+
+{{if .Active}}
+<h2>Berjalan sekarang</h2>
+<p class="muted">Run #{{.Active.ID}} · {{.Active.Status}}{{if .Active.Phase}} · {{.Active.Phase}}{{end}}
+  · <a href="/sync/{{.Active.ID}}">detail</a></p>
+{{end}}
+
+<p><button type="button" id="open-content">List Content</button></p>
+
+<h2>Riwayat 20 run terakhir</h2>
+<form class="filters" method="get" action="/sync">
+  <div>
+    <label for="q">Cari (ID atau pemicu)</label>
+    <input id="q" type="text" name="q" value="{{.Q}}">
+  </div>
+  <div>
+    <label for="status">Status</label>
+    <select id="status" name="status">
+      <option value="">semua</option>
+      {{range .Statuses}}<option value="{{.}}"{{if eq . $.Status}} selected{{end}}>{{.}}</option>{{end}}
+    </select>
+  </div>
+  <div>
+    <button class="secondary" type="submit">Terapkan</button>
+    <a class="muted small" href="/sync">reset</a>
+  </div>
+</form>
+
+{{if .Runs}}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>ID</th><th>Status</th><th>Fase</th><th>Pemicu</th><th>Rendition</th><th>Mulai</th><th>Selesai</th></tr>
+    </thead>
+    <tbody>
+    {{range .Runs}}
+      <tr>
+        <td><a href="/sync/{{.ID}}">#{{.ID}}</a></td>
+        <td>{{.Status}}</td>
+        <td>{{if .Phase}}{{.Phase}}{{else}}—{{end}}</td>
+        <td>{{.Trigger}}{{if .TriggeredBy}} <span class="muted small">({{.TriggeredBy}})</span>{{end}}</td>
+        <td class="nowrap">{{.RenditionsReady}}/{{.TotalRenditions}} · gagal {{.RenditionsFailed}}</td>
+        <td class="nowrap">{{when .StartedAt}}</td>
+        <td class="nowrap">{{when .FinishedAt}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<p class="muted">Tidak ada run yang cocok dengan filter.</p>
+{{end}}
+
+<dialog id="content-dialog" class="modal" data-provider="dramahits" aria-labelledby="content-dialog-title">
+  <div class="dialog-head">
+    <strong id="content-dialog-title">List Content</strong>
+    <button type="button" class="secondary" id="close-content" aria-label="Tutup">×</button>
+  </div>
+
+  <div class="tabs" role="tablist" aria-label="Kategori konten">
+    <button type="button" class="tab active" id="tab-vod" role="tab"
+            aria-selected="true" aria-controls="panel-vod">VOD</button>
+    <button type="button" class="tab" id="tab-short" role="tab"
+            aria-selected="false" aria-controls="panel-short">Short</button>
+  </div>
+
+  <div class="dialog-body">
+    <section class="tab-panel" id="panel-vod" role="tabpanel" aria-labelledby="tab-vod">
+      <p class="muted">Densgo belum tersedia.</p>
+    </section>
+
+    <section class="tab-panel" id="panel-short" role="tabpanel" aria-labelledby="tab-short" hidden>
+      <p class="flash error" id="content-error" hidden></p>
+      <div class="content-grid" id="content-list">
+        <p class="muted">Memuat daftar series…</p>
+      </div>
+      <div class="pager">
+        <button type="button" class="secondary" id="prev-page" disabled>‹ Sebelumnya</button>
+        <span class="small muted" id="page-indicator">Halaman 1 / 1</span>
+        <button type="button" class="secondary" id="next-page" disabled>Berikutnya ›</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="dialog-foot">
+    <button type="button" class="danger" id="purge-content" title="Hapus semua batch dan katalog">Remove all batch</button>
+    <span class="spacer"></span>
+    <button type="button" id="save-selection" disabled>Simpan pilihan (0)</button>
+    <button type="button" class="secondary" id="cancel-content">Batal</button>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  'use strict';
+
+  var dialog = document.getElementById('content-dialog');
+  if (!dialog) { return; }
+
+  var openButton = document.getElementById('open-content');
+  var closeButton = document.getElementById('close-content');
+  var cancelButton = document.getElementById('cancel-content');
+  var tabVOD = document.getElementById('tab-vod');
+  var tabShort = document.getElementById('tab-short');
+  var panelVOD = document.getElementById('panel-vod');
+  var panelShort = document.getElementById('panel-short');
+  var listElement = document.getElementById('content-list');
+  var errorElement = document.getElementById('content-error');
+  var prevButton = document.getElementById('prev-page');
+  var nextButton = document.getElementById('next-page');
+  var indicator = document.getElementById('page-indicator');
+  var saveButton = document.getElementById('save-selection');
+  var purgeButton = document.getElementById('purge-content');
+
+  // selected menyimpan slug -> objek series, sehingga centang tetap bertahan
+  // saat pengguna berpindah halaman.
+  var selected = new Map();
+  var currentPage = 1;
+  var lastPage = 1;
+  var totalItems = 0;
+  var loaded = false;
+  var loading = false;
+
+  function csrfToken() {
+    var input = document.querySelector('input[name="_csrf"]');
+    return input ? input.value : '';
+  }
+
+  function updateSaveButton() {
+    saveButton.textContent = 'Simpan pilihan (' + selected.size + ')';
+    saveButton.disabled = selected.size === 0;
+  }
+
+  function showError(message) {
+    errorElement.textContent = message;
+    errorElement.hidden = false;
+  }
+
+  function clearError() {
+    errorElement.textContent = '';
+    errorElement.hidden = true;
+  }
+
+  function placeholder(text) {
+    var message = document.createElement('p');
+    message.className = 'muted';
+    message.textContent = text;
+    listElement.appendChild(message);
+  }
+
+  function episodeLabel(count) {
+    if (!count) { return '0 episode'; }
+    return count + ' episode';
+  }
+
+  // alreadyAdded melaporkan apakah server menandai series ini sudah ada di
+  // database (punya rendition). Item seperti itu tidak boleh dipilih lagi.
+  function alreadyAdded(item) {
+    return item.already_added === true;
+  }
+
+  // pruneSelected membuang item yang sudah ada dari pilihan, termasuk pilihan
+  // yang dibuat pada halaman lain sebelum statusnya diketahui.
+  function pruneSelected(items) {
+    items.forEach(function (item) {
+      if (alreadyAdded(item)) { selected.delete(item.slug); }
+    });
+  }
+
+  function renderList(items) {
+    listElement.textContent = '';
+    pruneSelected(items);
+    updateSaveButton();
+
+    if (!items.length) {
+      placeholder('Tidak ada series pada halaman ini.');
+      return;
+    }
+
+    items.forEach(function (item) {
+      var added = alreadyAdded(item);
+
+      var card = document.createElement('label');
+      card.className = 'content-item';
+      if (added) { card.className += ' content-item-added'; }
+
+      var checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.setAttribute('data-slug', item.slug);
+      // Item yang sudah ada selalu tidak tercentang dan tidak bisa diubah,
+      // sehingga tidak pernah masuk ke Map selected.
+      checkbox.checked = !added && selected.has(item.slug);
+      checkbox.disabled = added;
+      checkbox.addEventListener('change', function () {
+        if (added) {
+          checkbox.checked = false;
+          return;
+        }
+        if (checkbox.checked) {
+          selected.set(item.slug, item);
+        } else {
+          selected.delete(item.slug);
+        }
+        updateSaveButton();
+      });
+
+      var poster = document.createElement('img');
+      poster.className = 'content-poster';
+      poster.alt = '';
+      poster.loading = 'lazy';
+      poster.src = item.poster_url || '';
+
+      var info = document.createElement('span');
+      info.className = 'content-info';
+
+      var title = document.createElement('strong');
+      title.textContent = item.title || item.slug;
+      info.appendChild(title);
+
+      var meta = document.createElement('span');
+      meta.className = 'small muted';
+      meta.textContent = episodeLabel(item.episode_count);
+      info.appendChild(meta);
+
+      // Badge penanda konten yang sudah ada di database.
+      if (added) {
+        var badge = document.createElement('span');
+        badge.className = 'badge small';
+        badge.textContent = 'Sudah ada';
+        info.appendChild(badge);
+      }
+
+      card.appendChild(checkbox);
+      card.appendChild(poster);
+      card.appendChild(info);
+      listElement.appendChild(card);
+    });
+  }
+
+  function renderPager() {
+    indicator.textContent = 'Halaman ' + currentPage + ' / ' + lastPage + ' · ' + totalItems + ' series';
+    prevButton.disabled = loading || currentPage <= 1;
+    nextButton.disabled = loading || currentPage >= lastPage;
+  }
+
+  function applyPage(data, fallbackPage) {
+    var meta = data.meta || {};
+    currentPage = meta.page || fallbackPage;
+    lastPage = meta.last_page || currentPage;
+    totalItems = meta.total || 0;
+    if (currentPage < 1) { currentPage = 1; }
+    if (lastPage < currentPage) { lastPage = currentPage; }
+    renderList(data.items || []);
+    renderPager();
+  }
+
+  function loadPage(page) {
+    if (loading) { return; }
+    loading = true;
+    clearError();
+    listElement.textContent = '';
+    placeholder('Memuat daftar series…');
+    renderPager();
+
+    fetch('/content/short?page=' + encodeURIComponent(page), {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      credentials: 'same-origin'
+    }).then(function (response) {
+      return response.json().then(function (body) {
+        return { ok: response.ok, body: body };
+      });
+    }).then(function (result) {
+      var body = result.body || {};
+      if (!result.ok || body.code !== 0) {
+        showError(body.msg || 'Gagal memuat daftar series.');
+        listElement.textContent = '';
+        placeholder('Daftar tidak dapat dimuat.');
+        return;
+      }
+      applyPage(body.data || {}, page);
+    }).catch(function () {
+      showError('Gagal memuat daftar series.');
+      listElement.textContent = '';
+      placeholder('Daftar tidak dapat dimuat.');
+    }).then(function () {
+      loading = false;
+      renderPager();
+    });
+  }
+
+  function activateTab(name) {
+    var shortActive = name === 'short';
+    tabVOD.classList.toggle('active', !shortActive);
+    tabShort.classList.toggle('active', shortActive);
+    tabVOD.setAttribute('aria-selected', String(!shortActive));
+    tabShort.setAttribute('aria-selected', String(shortActive));
+    panelVOD.hidden = shortActive;
+    panelShort.hidden = !shortActive;
+
+    if (shortActive && !loaded) {
+      loaded = true;
+      loadPage(currentPage);
+    }
+  }
+
+  function openDialog() {
+    activateTab('vod');
+    updateSaveButton();
+    if (typeof dialog.showModal === 'function') {
+      dialog.showModal();
+    } else {
+      dialog.setAttribute('open', 'open');
+    }
+  }
+
+  function closeDialog() {
+    if (typeof dialog.close === 'function') {
+      dialog.close();
+    } else {
+      dialog.removeAttribute('open');
+    }
+  }
+
+  function saveSelection() {
+    if (!selected.size) { return; }
+
+    var form = document.createElement('form');
+    form.method = 'post';
+    form.action = '/content/select';
+
+    var csrf = document.createElement('input');
+    csrf.type = 'hidden';
+    csrf.name = '_csrf';
+    csrf.value = csrfToken();
+    form.appendChild(csrf);
+
+    var provider = document.createElement('input');
+    provider.type = 'hidden';
+    provider.name = 'provider';
+    provider.value = dialog.getAttribute('data-provider') || 'dramahits';
+    form.appendChild(provider);
+
+    selected.forEach(function (item, slug) {
+      var field = document.createElement('input');
+      field.type = 'hidden';
+      field.name = 'slug';
+      field.value = slug;
+      form.appendChild(field);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  // removeAllBatch mengirim POST /content/purge: aksi "Remove all batch" yang
+  // menghapus seluruh storage (semua generation) dan membersihkan katalog.
+  // Server membalas 303 ke /sync dengan flash berisi jumlah yang dihapus.
+  function removeAllBatch() {
+    if (!window.confirm('Hapus SEMUA batch dan katalog? Tindakan ini tidak bisa dibatalkan.')) { return; }
+
+    var form = document.createElement('form');
+    form.method = 'post';
+    form.action = '/content/purge';
+
+    var csrf = document.createElement('input');
+    csrf.type = 'hidden';
+    csrf.name = '_csrf';
+    csrf.value = csrfToken();
+    form.appendChild(csrf);
+
+    var confirmation = document.createElement('input');
+    confirmation.type = 'hidden';
+    confirmation.name = 'confirm';
+    confirmation.value = 'PURGE';
+    form.appendChild(confirmation);
+
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  openButton.addEventListener('click', openDialog);
+  closeButton.addEventListener('click', closeDialog);
+  cancelButton.addEventListener('click', closeDialog);
+  saveButton.addEventListener('click', saveSelection);
+  purgeButton.addEventListener('click', removeAllBatch);
+  tabVOD.addEventListener('click', function () { activateTab('vod'); });
+  tabShort.addEventListener('click', function () { activateTab('short'); });
+  prevButton.addEventListener('click', function () {
+    if (currentPage > 1) { loadPage(currentPage - 1); }
+  });
+  nextButton.addEventListener('click', function () {
+    if (currentPage < lastPage) { loadPage(currentPage + 1); }
+  });
+
+  updateSaveButton();
+}());
+</script>
+{{end}}

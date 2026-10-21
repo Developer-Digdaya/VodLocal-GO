@@ -1,0 +1,22 @@
+{{define "content"}}
+<h1>Pengaturan</h1>
+
+<form class="card" method="post" action="/settings">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+  <div class="grid">
+    {{range .Fields}}
+    <div>
+      {{if eq .Kind "bool"}}
+        <label><input type="checkbox" name="{{.Key}}" value="1"{{if .Checked}} checked{{end}}> {{.Label}}</label>
+      {{else}}
+        <label for="{{.Key}}">{{.Label}}</label>
+        <input class="full" id="{{.Key}}" name="{{.Key}}" value="{{.Value}}"{{if eq .Kind "int"}} type="number"{{else}} type="text"{{end}}>
+      {{end}}
+      <p class="muted small"><code>{{.Key}}</code></p>
+      {{if .Error}}<p class="flash error small">{{.Error}}</p>{{end}}
+    </div>
+    {{end}}
+  </div>
+  <p><button type="submit">Simpan pengaturan</button></p>
+</form>
+{{end}}

@@ -1,0 +1,108 @@
+{
+  "data": [
+    {
+      "id": "a1b2c3d4-0001-4e5f-8a9b-0c1d2e3f4a5b",
+      "type": "episode",
+      "title": "Episode 1",
+      "slug": "rahasia-nyonya-muda-episode-1",
+      "published_at": "2026-10-20T10:50:00+07:00",
+      "media": {
+        "poster_vertical": {
+          "original_url": "https://cdn.digdaya.co.id/dramahits/rahasia-nyonya-muda/ep1/poster-vertical.jpg"
+        }
+      },
+      "details": {
+        "episode_number": 1,
+        "duration": 138,
+        "duration_label": "2mnt 18dt",
+        "is_portrait": true,
+        "season": {
+          "id": "5c6d7e8f-0001-4a2b-9c3d-4e5f6a7b8c9d",
+          "number": 1
+        },
+        "series": {
+          "title": "Rahasia Nyonya Muda",
+          "slug": "rahasia-nyonya-muda"
+        },
+        "streams": {
+          "main": [
+            {
+              "type": "main",
+              "device": "ios",
+              "url": "https://cdn.digdaya.co.id/dramahits/rahasia-nyonya-muda/ep1/ios.m3u8",
+              "token_required": false,
+              "expires_at": null
+            },
+            {
+              "type": "main",
+              "device": "android",
+              "url": "https://cdn.digdaya.co.id/dramahits/rahasia-nyonya-muda/ep1/android.m3u8",
+              "token_required": false,
+              "expires_at": null
+            }
+          ],
+          "preview": [
+            {
+              "type": "preview",
+              "device": "all",
+              "url": "https://cdn.digdaya.co.id/dramahits/rahasia-nyonya-muda/ep1/preview.mp4",
+              "token_required": false,
+              "expires_at": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0002-4e5f-8a9b-0c1d2e3f4a5b",
+      "type": "episode",
+      "title": "Episode 2",
+      "slug": "rahasia-nyonya-muda-episode-2",
+      "published_at": "2026-10-20T10:55:00+07:00",
+      "media": {
+        "poster_vertical": {
+          "original_url": "https://cdn.digdaya.co.id/dramahits/rahasia-nyonya-muda/ep2/poster-vertical.jpg"
+        }
+      },
+      "details": {
+        "episode_number": 2,
+        "duration": 95,
+        "duration_label": "1mnt 35dt",
+        "is_portrait": true,
+        "season": {
+          "id": "5c6d7e8f-0001-4a2b-9c3d-4e5f6a7b8c9d",
+          "number": 1
+        },
+        "series": {
+          "title": "Rahasia Nyonya Muda",
+          "slug": "rahasia-nyonya-muda"
+        },
+        "streams": {
+          "main": [
+            {
+              "type": "main",
+              "device": "all",
+              "url": "https://cdn.digdaya.co.id/dramahits/rahasia-nyonya-muda/ep2/all.m3u8",
+              "token_required": true,
+              "expires_at": "2026-10-21T00:00:00+07:00"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "links": {
+    "first": "https://stage-microdrama.digdaya.co.id/api/v1/series/rahasia-nyonya-muda/episodes?page%5Bnumber%5D=1",
+    "last": "https://stage-microdrama.digdaya.co.id/api/v1/series/rahasia-nyonya-muda/episodes?page%5Bnumber%5D=1",
+    "prev": null,
+    "next": null
+  },
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 1,
+    "per_page": 30,
+    "to": 2,
+    "total": 2
+  }
+}

@@ -1,0 +1,88 @@
+{{define "content"}}
+<h1>Sinkronisasi #{{.Run.ID}}</h1>
+<p class="small"><a href="/sync">kembali ke daftar</a></p>
+
+{{template "sync_status" .StatusView}}
+
+{{if .Run.Active}}
+<form method="post" action="/sync/{{.Run.ID}}/cancel">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+  <button class="danger" type="submit">Batalkan sinkronisasi</button>
+</form>
+{{end}}
+
+<div class="table-wrap">
+  <table>
+    <tr><th>Status</th><td>{{.Run.Status}}</td></tr>
+    <tr><th>Fase</th><td>{{if .Run.Phase}}{{.Run.Phase}}{{else}}—{{end}}</td></tr>
+    <tr><th>Pemicu</th><td>{{.Run.Trigger}}{{if and .Run.TriggeredBy (ne .Run.TriggeredBy .Run.Trigger)}} oleh {{.Run.TriggeredBy}}{{end}}</td></tr>
+    <tr><th>Rendition</th><td>{{.Run.RenditionsReady}}/{{.Run.TotalRenditions}} siap · {{.Run.RenditionsFailed}} gagal</td></tr>
+    <tr><th>Byte terunduh</th><td>{{bytes .Run.BytesDownloaded}}</td></tr>
+    <tr><th>Dibuat</th><td>{{when .Run.CreatedAt}}</td></tr>
+    <tr><th>Mulai</th><td>{{when .Run.StartedAt}}</td></tr>
+    <tr><th>Selesai</th><td>{{when .Run.FinishedAt}}</td></tr>
+    {{if .Run.ErrorMessage}}<tr><th>Error</th><td class="small">{{.Run.ErrorMessage}}</td></tr>{{end}}
+  </table>
+</div>
+
+<h2>Konten</h2>
+{{template "generation_items" .ItemsView}}
+
+{{if .Run.Active}}
+<script>
+(function () {
+  'use strict';
+
+  var progressElement = document.getElementById('sync-progress');
+  if (!progressElement) { return; }
+
+  var runID = progressElement.getAttribute('data-run-id');
+  var statusURL = '/sync/' + runID + '/status';
+  var itemsURL = '/sync/' + runID + '/items';
+
+  // isActive membaca penanda yang dipasang server pada container: "1" berarti
+  // run masih berjalan dan polling diteruskan.
+  function isActive(element) {
+    return !!element && element.getAttribute('data-active') === '1';
+  }
+
+  function fetchHTML(url) {
+    return window.fetch(url, { headers: { 'Accept': 'text/html' }, credentials: 'same-origin' })
+      .then(function (response) {
+        if (!response.ok) { throw new Error('HTTP ' + response.status); }
+        return response.text();
+      });
+  }
+
+  // swap mengganti satu container dengan fragmen terbaru dari server.
+  function swap(id, html) {
+    var element = document.getElementById(id);
+    if (!element) { return; }
+    element.outerHTML = html;
+  }
+
+  var timer = window.setInterval(function () {
+    var status = fetchHTML(statusURL).then(function (html) {
+      swap('sync-progress', html);
+    });
+    var items = fetchHTML(itemsURL).then(function (html) {
+      swap('sync-items', html);
+    });
+
+    Promise.all([status, items]).then(function () {
+      // Polling berhenti begitu salah satu container melaporkan run selesai;
+      // halaman dimuat ulang sekali agar tombol/status akhir ikut tampil.
+      if (isActive(document.getElementById('sync-progress')) &&
+          isActive(document.getElementById('sync-items'))) {
+        return;
+      }
+      window.clearInterval(timer);
+      window.location.reload();
+    }).catch(function () {
+      window.clearInterval(timer);
+    });
+  }, 3000);
+})();
+</script>
+{{end}}
+{{end}}

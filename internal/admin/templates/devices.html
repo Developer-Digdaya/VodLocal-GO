@@ -1,0 +1,86 @@
+{{define "content"}}
+<h1>Perangkat</h1>
+
+<form class="filters" method="get" action="/devices">
+  <div>
+    <label for="q">Cari (nama, kursi, MAC, IP)</label>
+    <input id="q" type="text" name="q" value="{{.Q}}">
+  </div>
+  <div>
+    <label for="status">Status</label>
+    <select id="status" name="status">
+      <option value="all"{{if eq .Status "all"}} selected{{end}}>semua</option>
+      <option value="online"{{if eq .Status "online"}} selected{{end}}>online</option>
+      <option value="offline"{{if eq .Status "offline"}} selected{{end}}>offline</option>
+      <option value="disabled"{{if eq .Status "disabled"}} selected{{end}}>disabled</option>
+    </select>
+  </div>
+  <div>
+    <label for="sort">Urutkan</label>
+    <select id="sort" name="sort">
+      <option value="-last_seen_at"{{if eq .Sort "-last_seen_at"}} selected{{end}}>terakhir terlihat</option>
+      <option value="seat_number"{{if eq .Sort "seat_number"}} selected{{end}}>nomor kursi</option>
+      <option value="name"{{if eq .Sort "name"}} selected{{end}}>nama</option>
+      <option value="-created_at"{{if eq .Sort "-created_at"}} selected{{end}}>terbaru</option>
+    </select>
+  </div>
+  <div>
+    <label for="per_page">Per halaman</label>
+    <input id="per_page" type="number" name="per_page" min="1" max="200" value="{{.PerPage}}">
+  </div>
+  <div>
+    <button class="secondary" type="submit">Terapkan</button>
+    <a class="muted small" href="/devices">reset</a>
+  </div>
+</form>
+
+<p class="muted small">{{.Total}} perangkat · halaman {{.Page}} dari {{if .TotalPages}}{{.TotalPages}}{{else}}1{{end}}</p>
+
+{{if .Devices}}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>ID</th><th>Nama</th><th>Kursi</th><th>MAC</th><th>IP</th><th>Status</th><th>Terakhir terlihat</th><th>Aksi</th></tr>
+    </thead>
+    <tbody>
+    {{range .Devices}}
+      <tr>
+        <td>{{.ID}}</td>
+        <td>{{.Name}}</td>
+        <td>{{if .SeatNumber}}{{.SeatNumber}}{{else}}—{{end}}</td>
+        <td class="small">{{if .MACAddress}}{{.MACAddress}}{{else}}—{{end}}</td>
+        <td class="small">{{if .IPAddress}}{{.IPAddress}}{{else}}—{{end}}</td>
+        <td>{{.Status}}</td>
+        <td class="nowrap">{{when .LastSeenAt}}</td>
+        <td>
+          {{if .IsActive}}
+          <form class="inline" method="post" action="/devices/{{.ID}}/disable">
+            <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+            <button class="danger" type="submit">Nonaktifkan</button>
+          </form>
+          {{else}}
+          <form class="inline" method="post" action="/devices/{{.ID}}/enable">
+            <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+            <button class="secondary" type="submit">Aktifkan</button>
+          </form>
+          {{end}}
+          <form class="inline" method="post" action="/devices/{{.ID}}/rotate-token">
+            <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+            <button class="secondary" type="submit">Rotasi token</button>
+          </form>
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+
+<div class="pager">
+  {{if .HasPrev}}<a href="?q={{.Q}}&amp;status={{.Status}}&amp;sort={{.Sort}}&amp;per_page={{.PerPage}}&amp;page={{.PrevPage}}">« sebelumnya</a>{{end}}
+  <span class="muted small">halaman {{.Page}}</span>
+  {{if .HasNext}}<a href="?q={{.Q}}&amp;status={{.Status}}&amp;sort={{.Sort}}&amp;per_page={{.PerPage}}&amp;page={{.NextPage}}">berikutnya »</a>{{end}}
+</div>
+{{else}}
+<p class="muted">Tidak ada perangkat yang cocok dengan filter.</p>
+{{end}}
+{{end}}

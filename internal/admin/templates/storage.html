@@ -1,0 +1,99 @@
+{{define "content"}}
+<h1>Storage</h1>
+
+<p class="muted">
+  {{len .Items}} konten · total {{bytes .TotalBytes}} · {{.GenerationCount}} generation
+</p>
+
+<p class="notice">
+  Penghapusan dilakukan per konten: satu baris di bawah menghapus satu series beserta seluruh episodenya pada generation tersebut. Konten yang masih punya media di generation lain tidak ikut terhapus.
+</p>
+
+{{if .Items}}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Judul</th>
+        <th>Kategori</th>
+        <th>Generation</th>
+        <th>Status</th>
+        <th>Episode</th>
+        <th>Progres</th>
+        <th>Ukuran</th>
+        <th>Aksi</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{range .Items}}
+      <tr>
+        <td>
+          {{.SeriesTitle}}
+          {{if .SeriesExternalID}}<br><span class="muted small"><code>{{.SeriesExternalID}}</code></span>{{end}}
+        </td>
+        <td>{{if .Category}}{{.Category}}{{else}}—{{end}}</td>
+        <td class="nowrap">
+          <code>{{.GenerationLabel}}</code>
+          <br><span class="muted small">{{.GenerationStatus}}</span>
+        </td>
+        <td>{{.Status}}</td>
+        <td class="nowrap">{{.EpisodesDone}}/{{.TotalEpisodes}}</td>
+        <td class="nowrap">
+          <span class="item-progress"><progress max="100" value="{{.ProgressPercent}}">{{.ProgressPercent}}%</progress></span>
+          <span class="small">{{.ProgressPercent}}%</span>
+        </td>
+        <td class="nowrap">{{bytes .Bytes}}</td>
+        <td>
+          <form class="inline" method="post" action="/storage/items/{{.ID}}/delete"
+                onsubmit="return confirm('Hapus konten ini beserta seluruh episodenya? Tindakan ini tidak bisa dibatalkan.');">
+            <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="confirm" value="DELETE">
+            <button class="danger" type="submit" title="Hapus konten ini dari generation tersebut">Hapus</button>
+          </form>
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<p class="muted">Belum ada konten.</p>
+{{end}}
+
+<h2>Hapus semua konten</h2>
+<p class="notice">
+  Menghapus semua konten dan storage. Tindakan ini tidak bisa dibatalkan.
+</p>
+<form class="inline" method="post" action="/content/purge"
+      onsubmit="return confirm('Menghapus semua konten dan storage. Tindakan ini tidak bisa dibatalkan.');">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+  <input type="hidden" name="confirm" value="PURGE">
+  <button class="danger" type="submit">Hapus semua konten</button>
+</form>
+
+{{if .Generations}}
+<h2>Generation</h2>
+<p class="muted small">
+  Ringkasan batch yang tercatat. Penghapusan dilakukan per konten di tabel atas, atau seluruhnya lewat "Hapus semua konten".
+</p>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Label</th><th>Status</th><th>Ukuran</th><th>Berkas</th><th>Dibuat</th><th>Retired</th></tr>
+    </thead>
+    <tbody>
+    {{range .Generations}}
+      <tr>
+        <td class="nowrap"><code>{{.Label}}</code></td>
+        <td>{{.Status}}</td>
+        <td class="nowrap">{{bytes .TotalBytes}}<span class="muted small"> ({{.TotalBytes}} B)</span></td>
+        <td>{{.FileCount}}</td>
+        <td class="nowrap">{{when .CreatedAt}}</td>
+        <td class="nowrap">{{when .RetiredAt}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+{{end}}

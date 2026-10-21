@@ -1,0 +1,17 @@
+{{define "sync_status"}}
+<div id="sync-progress" class="progress-card" data-run-id="{{.Payload.ID}}" data-active="{{if .Active}}1{{else}}0{{end}}">
+  <p class="small">
+    <strong>{{.Payload.Status}}</strong>
+    {{if .Payload.Phase}}<span class="muted">· fase {{.Payload.Phase}}</span>{{end}}
+    <span class="muted nowrap">· {{.Payload.ProgressPercent}}%</span>
+  </p>
+  <progress max="100" value="{{.Payload.ProgressPercent}}">{{.Payload.ProgressPercent}}%</progress>
+  <p class="muted small">
+    <span class="nowrap">{{.Payload.RenditionsReady}}/{{.Payload.TotalRenditions}} rendition siap</span>
+    · <span class="nowrap">gagal {{.Payload.RenditionsFailed}}</span>
+    · <span class="nowrap">{{bytes .Payload.BytesDownloaded}}</span>
+    · <span class="nowrap">{{.Payload.ElapsedSeconds}} detik</span>
+    {{if .Payload.ETASeconds}}· <span class="nowrap">sisa ±{{.Payload.ETASeconds}} detik</span>{{end}}
+  </p>
+</div>
+{{end}}
