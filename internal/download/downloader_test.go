@@ -508,6 +508,34 @@ func TestNewNormalizesOptions(t *testing.T) {
 	}
 }
 
+func TestNewTunesHTTPConnectionPool(t *testing.T) {
+	t.Parallel()
+
+	d := New(Options{MaxParallel: 16})
+	tr, ok := d.client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport = %T, mau *http.Transport", d.client.Transport)
+	}
+	if tr.MaxIdleConnsPerHost < 16 {
+		t.Errorf("MaxIdleConnsPerHost = %d, mau >= 16", tr.MaxIdleConnsPerHost)
+	}
+	if tr.MaxIdleConns < tr.MaxIdleConnsPerHost {
+		t.Errorf("MaxIdleConns = %d, mau >= MaxIdleConnsPerHost (%d)", tr.MaxIdleConns, tr.MaxIdleConnsPerHost)
+	}
+	if tr.MaxConnsPerHost != 0 {
+		t.Errorf("MaxConnsPerHost = %d, mau 0", tr.MaxConnsPerHost)
+	}
+}
+
+func TestNewKeepsCustomClient(t *testing.T) {
+	t.Parallel()
+
+	custom := &http.Client{}
+	if d := New(Options{Client: custom}); d.client != custom {
+		t.Error("New mengganti client yang diberikan pemanggil")
+	}
+}
+
 func TestDownloadNormalizedOptionsRun(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, testBody(r.URL.Path))

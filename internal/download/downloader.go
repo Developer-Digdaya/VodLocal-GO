@@ -137,7 +137,21 @@ func New(opts Options) *Downloader {
 		d.timeout = DefaultTimeout
 	}
 	if d.client == nil {
-		d.client = &http.Client{}
+		// http.DefaultTransport hanya menyimpan dua koneksi idle per host.
+		// Dengan banyak worker, koneksi dibuka dan ditutup terus sehingga
+		// setiap segmen bisa membayar TCP/TLS handshake lagi. Simpan cukup
+		// koneksi idle agar worker memakai ulang koneksi yang sama.
+		base, ok := http.DefaultTransport.(*http.Transport)
+		if !ok {
+			base = &http.Transport{Proxy: http.ProxyFromEnvironment}
+		}
+		transport := base.Clone()
+		idle := max(d.maxParallel*2, 16)
+		transport.MaxIdleConns = max(100, idle)
+		transport.MaxIdleConnsPerHost = idle
+		transport.MaxConnsPerHost = 0
+		transport.IdleConnTimeout = 90 * time.Second
+		d.client = &http.Client{Transport: transport}
 	}
 	return d
 }
