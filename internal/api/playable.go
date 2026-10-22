@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"vodlocal/internal/hls"
 	"vodlocal/internal/response"
@@ -61,7 +60,8 @@ type playableRow struct {
 	EpisodeName     sql.NullString
 }
 
-// renditionRow adalah satu rendisi ready milik playable pada generation aktif.
+// renditionRow adalah satu rendisi ready pada generation yang menyajikan
+// playable saat ini.
 type renditionRow struct {
 	Quality      string
 	Width        sql.NullInt64
@@ -92,17 +92,41 @@ func (s *server) loadPlayable(ctx context.Context, id int64) (playableRow, error
 	return row, nil
 }
 
-// readyRenditions mengambil rendisi berstatus ready pada generation aktif,
-// diurutkan dari resolusi tertinggi (§8.1).
-func (s *server) readyRenditions(ctx context.Context, gen activeGeneration, playableID int64) ([]renditionRow, error) {
-	rows, err := s.read.QueryContext(ctx,
-		`SELECT quality, width, height, bitrate_kbps, COALESCE(playlist_path, '')
-		 FROM renditions
-		 WHERE playable_id = ? AND generation_id = ? AND status = 'ready'
-		 ORDER BY height DESC, bitrate_kbps DESC, quality ASC`,
-		playableID, gen.ID)
+// servingRenditions memilih satu generation yang menyajikan playable lalu
+// mengembalikan seluruh rendition ready dari generation itu. Generation lama
+// tetap dipakai selama rendition-nya ready dan direktorinya sudah diterbitkan;
+// generation building/failed tidak pernah dipilih.
+func (s *server) servingRenditions(ctx context.Context, playableID int64) (string, []renditionRow, error) {
+	var (
+		generationID int64
+		label        string
+	)
+	err := s.read.QueryRowContext(ctx, `
+SELECT r.generation_id, g.label
+FROM renditions r
+JOIN generations g ON g.id = r.generation_id
+WHERE r.playable_id = ? AND r.status = 'ready'
+  AND g.status NOT IN ('building', 'failed')
+  AND COALESCE(r.playlist_path, '') <> ''
+ORDER BY COALESCE(r.height, 0) DESC, COALESCE(r.bitrate_kbps, 0) DESC,
+         r.quality ASC, g.created_at DESC, g.id DESC
+LIMIT 1`, playableID).Scan(&generationID, &label)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return "", nil, nil
+	case err != nil:
+		return "", nil, err
+	}
+
+	rows, err := s.read.QueryContext(ctx, `
+SELECT quality, width, height, bitrate_kbps, COALESCE(playlist_path, '')
+FROM renditions
+WHERE playable_id = ? AND generation_id = ? AND status = 'ready'
+  AND COALESCE(playlist_path, '') <> ''
+ORDER BY height DESC, bitrate_kbps DESC, quality ASC`,
+		playableID, generationID)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	defer rows.Close()
 
@@ -110,38 +134,47 @@ func (s *server) readyRenditions(ctx context.Context, gen activeGeneration, play
 	for rows.Next() {
 		var row renditionRow
 		if err := rows.Scan(&row.Quality, &row.Width, &row.Height, &row.BitrateKbps, &row.PlaylistPath); err != nil {
-			return nil, err
+			return "", nil, err
 		}
 		renditions = append(renditions, row)
 	}
-	return renditions, rows.Err()
+	return label, renditions, rows.Err()
 }
 
-// subtitlesFor mengambil subtitle siap pada generation aktif.
-func (s *server) subtitlesFor(ctx context.Context, gen activeGeneration, playableID int64) ([]subtitleItem, error) {
-	rows, err := s.read.QueryContext(ctx,
-		`SELECT lang, label, format, file_path
-		 FROM subtitles
-		 WHERE playable_id = ? AND generation_id = ? AND status = 'ready'
-		 ORDER BY lang ASC`,
-		playableID, gen.ID)
+// subtitlesFor mengambil subtitle ready dari generation mana pun, memilih yang
+// terbaru per bahasa. URL tetap memakai label generation masing-masing file.
+func (s *server) subtitlesFor(ctx context.Context, playableID int64) ([]subtitleItem, error) {
+	rows, err := s.read.QueryContext(ctx, `
+SELECT s.lang, s.label, s.format, s.file_path, g.label
+FROM subtitles s
+JOIN generations g ON g.id = s.generation_id
+WHERE s.playable_id = ? AND s.status = 'ready'
+  AND g.status NOT IN ('building', 'failed')
+ORDER BY s.lang ASC, g.created_at DESC, g.id DESC`,
+		playableID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	subtitles := make([]subtitleItem, 0, 2)
+	seen := make(map[string]bool)
 	for rows.Next() {
 		var (
 			item     subtitleItem
 			label    sql.NullString
 			filePath string
+			genLabel string
 		)
-		if err := rows.Scan(&item.Lang, &label, &item.Format, &filePath); err != nil {
+		if err := rows.Scan(&item.Lang, &label, &item.Format, &filePath, &genLabel); err != nil {
 			return nil, err
 		}
+		if seen[item.Lang] {
+			continue
+		}
+		seen[item.Lang] = true
 		item.Label = nullString(label)
-		item.URL = mediaURL(gen.Label, filePath)
+		item.URL = mediaURL(genLabel, filePath)
 		subtitles = append(subtitles, item)
 	}
 	return subtitles, rows.Err()
@@ -149,11 +182,6 @@ func (s *server) subtitlesFor(ctx context.Context, gen activeGeneration, playabl
 
 // handlePlayable melayani GET /playables/{id}.
 func (s *server) handlePlayable(w http.ResponseWriter, r *http.Request) {
-	gen, ok := s.requireGeneration(w, r)
-	if !ok {
-		return
-	}
-
 	id, valid := pathID(r, "id")
 	if !valid {
 		response.Error(w, response.CodePlayableNotFound, nil)
@@ -174,7 +202,7 @@ func (s *server) handlePlayable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	renditions, err := s.readyRenditions(ctx, gen, id)
+	label, renditions, err := s.servingRenditions(ctx, id)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -184,7 +212,7 @@ func (s *server) handlePlayable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subtitles, err := s.subtitlesFor(ctx, gen, id)
+	subtitles, err := s.subtitlesFor(ctx, id)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -216,7 +244,7 @@ func (s *server) handlePlayable(w http.ResponseWriter, r *http.Request) {
 		Title:             playable.Title,
 		Episode:           episode,
 		DurationSeconds:   nullInt64(playable.DurationSeconds),
-		Generation:        gen.Label,
+		Generation:        label,
 		MasterPlaylistURL: "/api/v1/playables/" + itoa(id) + "/master.m3u8",
 		Variants:          variants,
 		Subtitles:         subtitles,
@@ -229,11 +257,6 @@ func (s *server) handlePlayable(w http.ResponseWriter, r *http.Request) {
 // (docs/api-spec.md §11). Kegagalan tetap memakai envelope supaya klien bisa
 // membaca kode 3002/3003/4009.
 func (s *server) handleMasterPlaylist(w http.ResponseWriter, r *http.Request) {
-	gen, ok := s.requireGeneration(w, r)
-	if !ok {
-		return
-	}
-
 	id, valid := pathID(r, "id")
 	if !valid {
 		response.Error(w, response.CodePlayableNotFound, nil)
@@ -254,7 +277,7 @@ func (s *server) handleMasterPlaylist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	renditions, err := s.readyRenditions(ctx, gen, id)
+	label, renditions, err := s.servingRenditions(ctx, id)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -262,16 +285,12 @@ func (s *server) handleMasterPlaylist(w http.ResponseWriter, r *http.Request) {
 
 	variants := make([]hls.Variant, 0, len(renditions))
 	for _, rendition := range renditions {
-		if strings.TrimSpace(rendition.PlaylistPath) == "" {
-			// Tanpa playlist_path tidak ada URI yang bisa ditawarkan.
-			continue
-		}
 		bitrate := 0
 		if rendition.BitrateKbps.Valid && rendition.BitrateKbps.Int64 > 0 {
 			bitrate = int(rendition.BitrateKbps.Int64) * 1000
 		}
 		variant := hls.Variant{
-			URI:              mediaURL(gen.Label, rendition.PlaylistPath),
+			URI:              mediaURL(label, rendition.PlaylistPath),
 			Bandwidth:        bitrate,
 			AverageBandwidth: bitrate,
 		}

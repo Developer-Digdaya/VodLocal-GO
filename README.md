@@ -58,13 +58,16 @@ Konten berasal dari dua penyedia:
   **Series**, dan **Short (Dramahits)**, pagination, checkbox yang bertahan
   antar-halaman, dan penanda “Sudah ada”.
 - **Worker ingest** — mengambil episode dari API, memilih varian video, mengunduh
-  segmen, menulis playlist lokal, dan mengaktifkan generation baru.
+  segmen, menulis playlist lokal, dan menutup batch unduhan (generation) baru.
 - **Progres per series** — status, episode selesai/gagal, rendition, byte, persentase,
   langkah terakhir, dan error; dipantau langsung di `/sync/{id}`.
 - **Storage per konten** — daftar series beserta ukuran dan progres; hapus per konten
   atau hapus semua konten.
-- **Atomic generation switch** — generation baru disiapkan di staging lalu diaktifkan
-  dengan `rename`, tanpa menyalin file.
+- **Batch unduhan terpisah** — generation baru disiapkan di staging lalu di-`rename`
+  menjadi batch selesai, tanpa menyalin file. Batch hanyalah metadata unduhan.
+- **Konten lama tidak pernah tersembunyi** — batch baru tidak menyembunyikan konten batch
+  lama: judul tetap tampil dan bisa diputar selama punya minimal satu rendition `ready`
+  pada batch mana pun yang sudah selesai. Tidak ada gate “generation aktif”.
 - **Preflight kapasitas disk** — menolak ingest bila pemakaian sudah mencapai ambang.
 - **Bersihkan katalog yatim** — title/episode/playable tanpa rendition ikut dihapus.
 - **Autentikasi tablet** — registrasi device, token Bearer, rotasi token, nonaktifkan.
@@ -319,25 +322,60 @@ Semua response JSON memakai envelope:
 | `GET` | `/media/{generation}/{path}` | – | Playlist, segmen, subtitle, poster |
 
 Spesifikasi lengkap, termasuk contoh request/response dan error, tersedia di
-[`openapi.json`](./openapi.json) (OpenAPI 3.0.3). Impor langsung ke Postman.
+[`openapi.json`](./openapi.json) (OpenAPI 3.0.0). Impor langsung ke Postman.
+
+**Generation = batch unduhan, bukan gerbang visibilitas**
+
+- `generations` hanya metadata batch unduhan (label, status, ukuran, waktu). Status
+  batch **tidak** menentukan apa yang boleh dilihat tablet.
+- Konten tampil dan bisa diputar selama punya minimal satu rendition `ready` pada batch
+  mana pun yang sudah selesai (`status` bukan `building`/`failed`) — termasuk batch lama.
+- Setiap batch tetap tersedia sampai admin menghapusnya. Sync baru hanya menambah batch,
+  tidak menyembunyikan atau menghapus batch lama.
+- `data.generation` pada `GET /api/v1/playables/{id}` adalah **batch yang menyajikan**
+  rendition untuk playable itu, bukan “batch aktif”. Nilainya bisa menunjuk batch lama.
+- Path media (`/media/<label>/...`) bersifat **opaque**: klien memakai
+  `master_playlist_url` (dan URL di dalam playlist) apa adanya, tidak menyusun path
+  sendiri dan tidak menebak label batch.
+- `503` · `4009 NO_ACTIVE_GENERATION` sudah tidak dipakai endpoint katalog/playback.
+  `/ready` memakai `no_media` bila belum ada batch dengan rendition siap; katalog dan
+  playback tetap berjalan dari batch lain yang selesai.
+
 
 ---
 
 ## 9. Alur Playback
+
+Alur tablet: **daftar judul → detail/episode → playable → master playlist**. Generation
+tidak pernah dipakai klien sebagai input; ia hanya info batch pada response.
 
 ```text
 1. POST /api/v1/devices/register                  (sekali, simpan token)
 2. GET  /api/v1/titles?page=1                     (home)
    GET  /api/v1/progress?limit=20                 (lanjut tonton)
    GET  /api/v1/genres                            (filter)
-3. GET  /api/v1/titles/{id}/episodes              (series)
-   atau first_playable_id pada detail movie
-4. GET  /api/v1/playables/{playable_id}           (varian + master_playlist_url)
+3. GET  /api/v1/titles/{id}                       (detail + first_playable_id)
+   atau /api/v1/titles/{id}/episodes              (series: ready + playable_id)
+4. GET  /api/v1/playables/{playable_id}           (varian + subtitle + master_playlist_url)
 5. GET  /api/v1/playables/{id}/master.m3u8        (Bearer)
 6. GET  /media/{generation}/.../index.m3u8        (tanpa token)
 7. GET  /media/{generation}/.../seg-00001.ts      (tanpa token)
-8. POST /api/v1/progress                          (tiap ≤20 detik)
+8. POST /api/v1/progress                          (tiap ≤20 detik, per playable)
 ```
+
+Catatan perilaku:
+
+- Langkah 2–4 tidak mensyaratkan “generation aktif”. Judul, episode, dan playable
+  dilayani selama ada rendition `ready` pada batch mana pun yang sudah selesai.
+- Langkah 4 mengembalikan `generation` = **batch yang menyajikan** rendition itu. Nilainya
+  bisa batch lama, dan itu normal — bukan tanda data basi.
+- Langkah 5 bisa menunjuk batch lama. Master playlist selalu dihasilkan ulang dari
+  rendition `ready` batch penyaji, jadi isinya selalu sesuai isi disk batch tersebut.
+- Langkah 6–7 memakai URL apa adanya dari playlist. Path media bersifat opaque: klien
+  tidak menyusun `/media/<label>/...` sendiri.
+- Langkah 8 menyimpan progress **per playable** (`playable_id`), bukan per judul, sehingga
+  lanjut tonton tetap benar walau playable itu disajikan batch berbeda.
+- Generation hanya informasi tambahan pada response; tidak perlu dikirim balik klien.
 
 Player Android memakai ExoPlayer/Media3 `HlsMediaSource`. URL master memerlukan header
 Bearer; varian dan segmen tidak.
@@ -379,15 +417,26 @@ Folder memakai **ID dari provider**, bukan slug/judul, dan mengikuti
 - `generations.root_path` menyimpan label relatif, sehingga root media bisa dipindah.
 - Path lama (mis. `dramahits/series/...`) tetap valid karena database menyimpan path
   relatif; hanya ingest baru yang memakai layout kategori di atas.
+- Label generation di path hanya penanda batch pemilik file. Bagi klien path ini
+  **opaque**: pakai URL yang diberikan API/playlist, jangan menyusunnya sendiri.
 
 ### 10.2 Penghapusan
 
+Kebijakan dasarnya: **setiap batch unduhan tetap tersedia sampai dihapus**. Sync baru
+tidak menghapus, tidak menyembunyikan, dan tidak memindahkan konten batch lama.
+
 - **Per konten** — `POST /storage/items/{id}/delete` (`confirm=DELETE`) menghapus folder
-  series + poster, renditions, subtitles, dan `generation_items`, lalu membersihkan
-  katalog yatim.
+  series + poster, renditions, subtitles, dan `generation_items` pada batch tersebut, lalu
+  membersihkan katalog yatim. Konten yang masih punya rendition di batch lain tetap bisa
+  diputar dari batch itu. Agar konten batch lama juga muncul di `/storage` (dan bisa dihapus
+  per konten), server mem-backfill `generation_items` saat boot untuk batch selesai yang
+  punya rendition `ready` tetapi belum punya baris item.
+- **Per batch** — `POST /storage/generations/{id}/delete` (`confirm=DELETE`, endpoint lama)
+  menghapus satu generation beserta direktorinya; katalog yatim ikut dibersihkan. Bisa
+  dipakai untuk membuang batch yang sudah tidak diperlukan.
 - **Semua konten** — `POST /content/purge` (`confirm=PURGE`) menghapus seluruh generation,
   sisa folder `gen-*`/`.building-*`, katalog yatim, dan artwork legacy.
-- **Tidak ada masa tenggang.** Generation lama ditandai `retired` dan tetap di disk
+- **Tidak ada masa tenggang dan tidak ada penghapusan otomatis.** Batch lama tetap di disk
   sampai admin menghapusnya. Penghapusan berlaku langsung; playback yang sedang berjalan
   akan gagal pada permintaan berikutnya (`404`).
 
@@ -418,11 +467,15 @@ Folder memakai **ID dari provider**, bukan slug/judul, dan mengikuti
    yang memenuhi; bila tidak ada, varian terkecil. Hanya satu varian yang diunduh.
 7. Playlist ditulis ulang, segmen diunduh, poster disimpan di folder konten.
 8. Progres per konten ditulis ke `generation_items`.
-9. Setelah selesai, generation di-commit, generation lama di-`retired`, katalog yatim
-   dibersihkan, dan run ditandai selesai.
+9. Setelah selesai, generation di-commit menjadi batch selesai (status lama hanya
+   memindahkan penanda `active` antar-batch), katalog yatim dibersihkan, dan run ditandai
+   selesai. Batch sebelumnya tetap ada di disk dan **tetap tersedia** bagi tablet: konten
+   yang tidak ikut di batch baru masih bisa diputar dari batch lamanya sampai admin
+   menghapusnya.
 
-**Yang belum ditangani:** subtitle Dramahits (`EXT-X-MEDIA`) dan penyalinan konten lama
-ke generation baru saat menambah batch (lihat [Batasan](#16-batasan-dan-rencana)).
+**Yang belum ditangani:** subtitle Dramahits (`EXT-X-MEDIA`). Penyalinan konten lama ke
+batch baru memang tidak diperlukan lagi: konten lama tidak pernah disembunyikan oleh batch
+baru (lihat [Batasan](#16-batasan-dan-rencana)).
 
 ---
 
@@ -601,7 +654,7 @@ internal/notify/     webhook & Telegram
 internal/devseed/    pembuat konten sintetis
 deploy/              systemd unit + contoh env
 scripts/             run-local.sh + deploy-linux.sh
-openapi.json         spesifikasi OpenAPI 3.0.3
+openapi.json         spesifikasi OpenAPI 3.0.0
 ```
 
 ---
@@ -628,16 +681,20 @@ openapi.json         spesifikasi OpenAPI 3.0.3
 | Varian video | Hanya satu varian terpilih (sisi pendek ≤ 480p) yang diunduh dan disimpan |
 | Subtitle Dramahits (`EXT-X-MEDIA`) | Belum diunduh |
 | Live streaming | Tidak didukung; sistem ini menyimpan konten on-demand secara offline |
-| Carry-over generation | Menambah batch baru belum menyalin konten lama ke generation baru |
+| Banyak batch per konten | Didukung: konten tetap tersedia selama punya rendition `ready` di batch mana pun yang selesai. **Tidak perlu** carry-over/hardlink |
 | Uji 100 stream di jaringan bus | Belum; butuh switch/AP gigabit |
 | Importer copy manual | Direncanakan |
 | CMS edit metadata | Direncanakan |
 | FTS5 | Belum; pencarian memakai `LIKE` (cukup sampai ±50.000 judul) |
 
-**Catatan carry-over:** setiap ingest membangun generation yang hanya berisi series yang
-dipilih. Bila menambahkan batch baru tanpa mekanisme carry-over, konten batch lama akan
-tertinggal di generation `retired` dan hilang dari katalog aktif. Perbaikan yang
-direncanakan: hardlink rendition lama ke generation baru.
+**Catatan batch.** Setiap ingest membangun generation yang hanya berisi series yang
+dipilih, tetapi batch itu **tidak** menentukan isi katalog. Katalog dan playback memakai
+syarat “minimal satu rendition `ready` pada batch mana pun yang sudah selesai”, sehingga
+konten batch lama tetap tampil dan tetap bisa diputar setelah batch baru masuk. Generation
+hanya metadata batch unduhan: labelnya dipakai untuk menyusun `root_path`/URL media (opaque
+bagi klien), bukan untuk menyembunyikan konten. Karena itu carry-over tidak diperlukan;
+yang perlu dijaga hanyalah kapasitas disk, dan admin menghapus konten/batch secara manual
+lewat `/storage` saat ruang menipis.
 
 ---
 

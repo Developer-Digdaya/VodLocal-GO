@@ -2,12 +2,12 @@
 <h1>Storage</h1>
 
 <p class="muted">
-  {{.Total}} konten · {{.GenerationCount}} generation · {{bytes .StorageBytes}} terpakai
-  {{if .ActiveLabel}} · aktif <code>{{.ActiveLabel}}</code>{{end}}
+  {{.Total}} konten · {{.GenerationCount}} batch · {{bytes .StorageBytes}} terpakai
+  {{if .ActiveLabel}} · batch terbaru <code>{{.ActiveLabel}}</code>{{end}}
 </p>
 
 <p class="notice">
-  Penghapusan dilakukan per konten: satu baris di bawah menghapus satu series beserta seluruh episodenya pada generation tersebut. Konten yang masih punya media di generation lain tidak ikut terhapus.
+  Unduhan tetap tersimpan dan bisa diputar sampai dihapus. Sync baru hanya menambah batch; unduhan lama tidak disembunyikan. Menghapus satu baris hanya menghapus salinan pada batch tersebut—salinan di batch lain tetap tersedia.
 </p>
 
 <form class="filters" method="get" action="/storage">
@@ -56,7 +56,7 @@
       <tr>
         <th scope="col">Judul</th>
         <th scope="col">Kategori</th>
-        <th scope="col">Generation</th>
+        <th scope="col">Batch</th>
         <th scope="col">Status</th>
         <th scope="col">Episode</th>
         <th scope="col">Progres</th>
@@ -74,7 +74,7 @@
         <td>{{if .Category}}<span class="badge">{{.Category}}</span>{{else}}—{{end}}</td>
         <td class="nowrap">
           <code>{{.GenerationLabel}}</code>
-          <br><span class="badge {{.GenerationStatus}}">{{.GenerationStatus}}</span>
+          <br><span class="badge {{.GenerationStatus}}">{{.GenerationStatusLabel}}</span>
         </td>
         <td><span class="badge {{.Status}}">{{.Status}}</span></td>
         <td class="nowrap">{{.EpisodesDone}}/{{.TotalEpisodes}}</td>
@@ -85,7 +85,7 @@
         <td class="nowrap">{{bytes .Bytes}}</td>
         <td>
           <form class="inline" method="post" action="/storage/items/{{.ID}}/delete"
-                onsubmit="return confirm('Hapus konten ini beserta seluruh episodenya? Tindakan ini tidak bisa dibatalkan.');">
+                onsubmit="return confirm('Hapus salinan konten ini beserta seluruh episodenya pada batch {{.GenerationLabel}}? Salinan di batch lain tetap tersimpan. Tindakan ini tidak bisa dibatalkan.');">
             <input type="hidden" name="_csrf" value="{{$.CSRF}}">
             <input type="hidden" name="confirm" value="DELETE">
             <input type="hidden" name="q" value="{{$.Q}}">
@@ -95,7 +95,7 @@
             <input type="hidden" name="per_page" value="{{$.PerPage}}">
             <input type="hidden" name="gen_page" value="{{$.GenPageInfo.Page}}">
             <input type="hidden" name="gen_per_page" value="{{$.GenPageInfo.PerPage}}">
-            <button class="danger" type="submit" title="Hapus konten ini dari generation tersebut">Hapus</button>
+            <button class="danger" type="submit" title="Hapus salinan konten ini dari batch tersebut">Hapus</button>
           </form>
         </td>
       </tr>
@@ -138,25 +138,24 @@
 </form>
 
 {{if .Generations}}
-<h2>Generation ({{.GenerationCount}})</h2>
+<h2>Batch ({{.GenerationCount}})</h2>
 <p class="muted small">
-  Ringkasan batch yang tercatat. Penghapusan dilakukan per konten di tabel atas, atau seluruhnya lewat "Hapus semua konten".
+  Batch adalah catatan satu kali unduhan. Isinya tetap tersimpan sampai dihapus; batch lama tidak lagi menyembunyikan konten.
 </p>
-<p class="muted small">Menampilkan {{.GenPageInfo.From}}–{{.GenPageInfo.To}} dari {{.GenPageInfo.Total}} generation.</p>
+<p class="muted small">Menampilkan {{.GenPageInfo.From}}–{{.GenPageInfo.To}} dari {{.GenPageInfo.Total}} batch.</p>
 <div class="table-wrap">
   <table class="striped">
     <thead>
-      <tr><th scope="col">Label</th><th scope="col">Status</th><th scope="col">Ukuran</th><th scope="col">Berkas</th><th scope="col">Dibuat</th><th scope="col">Retired</th></tr>
+      <tr><th scope="col">Label</th><th scope="col">Status batch</th><th scope="col">Ukuran</th><th scope="col">Berkas</th><th scope="col">Dibuat</th></tr>
     </thead>
     <tbody>
     {{range .Generations}}
       <tr>
         <td class="nowrap"><code>{{.Label}}</code></td>
-        <td><span class="badge {{.Status}}">{{.Status}}</span></td>
+        <td><span class="badge {{.Status}}">{{.StatusLabel}}</span></td>
         <td class="nowrap">{{bytes .TotalBytes}}<span class="muted small"> ({{.TotalBytes}} B)</span></td>
         <td>{{.FileCount}}</td>
         <td class="nowrap">{{when .CreatedAt}}</td>
-        <td class="nowrap">{{when .RetiredAt}}</td>
       </tr>
     {{end}}
     </tbody>

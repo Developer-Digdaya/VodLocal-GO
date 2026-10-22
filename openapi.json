@@ -3,7 +3,7 @@
   "info": {
     "title": "VodLocal - API Hiburan Bus",
     "version": "1.0.0",
-    "description": "API server hiburan lokal bus.\n\n**Envelope response**\n\nSemua endpoint JSON memakai bentuk:\n\n```json\n{\"code\":0,\"msg\":\"Berhasil\",\"data\":{},\"errors\":[]}\n```\n\n- `code = 0` sukses, `1` sukses sebagian, `>= 1000` error.\n- `errors` selalu array (tidak pernah `null`).\n- `data` selalu ada; bernilai `null` saat error.\n\n**Autentikasi**\n\n- API tablet: header `Authorization: Bearer <token>` (token dari `POST /api/v1/devices/register`).\n- Panel admin: cookie sesi `mc_session` + field `_csrf` pada POST form.\n- Media `/media/*` dan `/artwork/*` tidak memakai auth (LAN bus terisolasi).\n\n**Waktu**\n\nSemua timestamp di API memakai ISO-8601 UTC. Panel admin menampilkan WIB (UTC+7).\n\n**Kode error**\n\nRegistry lengkap ada di `docs/standar-response.md`. Contoh yang sering dipakai:\n`1003` validasi, `2000` tanpa token, `2004` device nonaktif, `3000` judul tidak ada,\n`3003` media belum siap, `4001` sync sedang berjalan, `4009` belum ada generation aktif,\n`8000` progress tidak ada."
+    "description": "API server hiburan lokal bus.\n\n**Envelope response**\n\nSemua endpoint JSON memakai bentuk:\n\n```json\n{\"code\":0,\"msg\":\"Berhasil\",\"data\":{},\"errors\":[]}\n```\n\n- `code = 0` sukses, `1` sukses sebagian, `>= 1000` error.\n- `errors` selalu array (tidak pernah `null`).\n- `data` selalu ada; bernilai `null` saat error.\n\n**Autentikasi**\n\n- API tablet: header `Authorization: Bearer <token>` (token dari `POST /api/v1/devices/register`).\n- Panel admin: cookie sesi `mc_session` + field `_csrf` pada POST form.\n- Media `/media/*` dan `/artwork/*` tidak memakai auth (LAN bus terisolasi).\n\n**Waktu**\n\nSemua timestamp di API memakai ISO-8601 UTC. Panel admin menampilkan WIB (UTC+7).\n\n**Kode error**\n\nRegistry lengkap ada di `docs/standar-response.md`. Contoh yang sering dipakai:\n`1003` validasi, `2000` tanpa token, `2004` device nonaktif, `3000` judul tidak ada,\n`3003` media belum siap, `4001` sync sedang berjalan, `8000` progress tidak ada.\n\n**Generation (batch unduhan)**\n\n`generations` hanyalah metadata batch unduhan. Konten yang sudah diunduh tetap tampil dan bisa diputar selama punya minimal satu rendition `ready` pada batch mana pun yang sudah selesai (`status` bukan `building`/`failed`) — tidak ada gerbang \"generation aktif\". Batch lama tetap tersedia sampai admin menghapusnya, dan path media (`/media/<label>/...`) bersifat opaque bagi klien: selalu pakai `master_playlist_url` atau URL yang diberikan API, jangan menyusun path sendiri."
   },
   "servers": [
     {
@@ -47,7 +47,8 @@
     "/ready": {
       "get": {
         "tags": ["Health"],
-        "summary": "Cek kesiapan (DB + generation aktif)",
+        "summary": "Cek kesiapan (DB + media siap di batch selesai)",
+        "description": "Kesiapan operasional: DB bisa dibaca dan ada batch selesai yang punya minimal satu rendition `ready` serta foldernya ada di disk. Status ini **tidak** menjadi gerbang katalog/playback — judul, episode, dan playable tetap dilayani dari batch mana pun yang sudah selesai.",
         "responses": {
           "200": {
             "description": "Siap melayani katalog dan media",
@@ -59,10 +60,10 @@
             }
           },
           "503": {
-            "description": "Belum siap",
+            "description": "Belum siap (operasional). `reason` dapat berupa `no_media`, `generation_missing_on_disk`, atau `db_unavailable`. Katalog dan playback tetap berjalan dari batch selesai lain yang tersedia.",
             "content": {
               "application/json": {
-                "example": { "status": "not_ready", "reason": "no_active_generation" }
+                "example": { "status": "not_ready", "reason": "no_media" }
               }
             }
           }
@@ -214,7 +215,7 @@
       "get": {
         "tags": ["Catalog"],
         "summary": "Daftar judul",
-        "description": "Hanya judul yang punya minimal satu rendition `ready` pada generation aktif.",
+        "description": "Hanya judul yang punya minimal satu rendition `ready` pada batch (`generation`) mana pun yang sudah selesai — `status` batch selain `building` dan `failed`. Tidak ada gate generation aktif: judul dari batch lama tetap tampil selama rendition-nya `ready` dan belum dihapus. `generation` tidak dikirim di sini; label batch hanya muncul lewat path media pada `poster_url`/`backdrop_url` yang harus diperlakukan opaque.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/Page" },
@@ -261,8 +262,7 @@
             }
           },
           "401": { "$ref": "#/components/responses/Unauthorized" },
-          "422": { "$ref": "#/components/responses/ValidationError" },
-          "503": { "$ref": "#/components/responses/NoActiveGeneration" }
+          "422": { "$ref": "#/components/responses/ValidationError" }
         }
       }
     },
@@ -270,6 +270,7 @@
       "get": {
         "tags": ["Catalog"],
         "summary": "Detail judul",
+        "description": "Detail satu judul yang dipublikasikan. `first_playable_id` menunjuk playable siap pertama (urutan tayang) pada batch mana pun yang sudah selesai, jadi bisa berasal dari batch lama. Judul tanpa satu pun rendition `ready` dianggap tidak tersedia (`404`), bukan `503`.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/TitleID" }],
         "responses": {
@@ -294,8 +295,7 @@
             }
           },
           "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/TitleNotFound" },
-          "503": { "$ref": "#/components/responses/NoActiveGeneration" }
+          "404": { "$ref": "#/components/responses/TitleNotFound" }
         }
       }
     },
@@ -303,6 +303,7 @@
       "get": {
         "tags": ["Catalog"],
         "summary": "Daftar episode",
+        "description": "Daftar episode satu judul. `ready` dan `playable_id` dihitung dari rendition `ready` pada batch mana pun yang sudah selesai (`status` bukan `building`/`failed`), sehingga episode dari batch lama tetap bisa diputar. Episode yang belum selesai diunduh tetap tampil dengan `ready: false`. Tidak ada gate generation aktif; tanpa rendition `ready` sama sekali judul dianggap tidak tersedia (`404`).",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/TitleID" },
@@ -348,8 +349,7 @@
             }
           },
           "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/TitleNotFound" },
-          "503": { "$ref": "#/components/responses/NoActiveGeneration" }
+          "404": { "$ref": "#/components/responses/TitleNotFound" }
         }
       }
     },
@@ -357,7 +357,7 @@
       "get": {
         "tags": ["Catalog"],
         "summary": "Pencarian judul + episode",
-        "description": "`q` wajib minimal 2 karakter. Hasil dipisah per kelompok.",
+        "description": "`q` wajib minimal 2 karakter. Hasil dipisah per kelompok. Kandidat diambil dari judul yang punya minimal satu rendition `ready` pada batch mana pun yang sudah selesai (`status` bukan `building`/`failed`), jadi konten batch lama tetap bisa ditemukan. Endpoint ini tidak memakai generation aktif dan tidak mengembalikan `503`.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/QueryRequired" },
@@ -428,8 +428,7 @@
                 }
               }
             }
-          },
-          "503": { "$ref": "#/components/responses/NoActiveGeneration" }
+          }
         }
       }
     },
@@ -437,6 +436,7 @@
       "get": {
         "tags": ["Playback"],
         "summary": "Detail playable + varian + subtitle",
+        "description": "Metadata playable beserta varian dan subtitle yang siap. Batch yang dipakai adalah batch yang **menyajikan** rendition `ready` untuk playable ini — bisa batch lama, bukan harus batch `active`, karena konten tetap tersedia sampai dihapus. `variants` hanya berisi rendition `ready` pada batch penyaji itu; `subtitles` diambil dari batch selesai mana pun (satu per bahasa, terbaru). Bila playable belum punya rendition `ready` sama sekali → `409` `3003`. Klien selalu memakai `master_playlist_url`, bukan menyusun path `/media/...` sendiri.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/PlayableID" }],
         "responses": {
@@ -490,7 +490,7 @@
       "get": {
         "tags": ["Playback"],
         "summary": "Master playlist HLS (dinamis)",
-        "description": "Dihasilkan dari rendition `ready` pada generation aktif. Dikecualikan dari envelope JSON.",
+        "description": "Dihasilkan ulang setiap request dari rendition `ready` pada batch yang menyajikan playable ini. Batch itu bisa batch lama — `/master.m3u8` **tidak** terikat generation aktif, dan URL varian yang dikembalikan menunjuk ke `/media/<label>/...` milik batch tersebut. Dikecualikan dari envelope JSON.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/PlayableID" }],
         "responses": {
@@ -1208,15 +1208,6 @@
           }
         }
       },
-      "NoActiveGeneration": {
-        "description": "Belum ada generation aktif",
-        "content": {
-          "application/json": {
-            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" },
-            "example": { "code": 4009, "msg": "Belum ada versi media aktif", "data": null, "errors": [] }
-          }
-        }
-      },
       "SyncAlreadyRunning": {
         "description": "Masih ada run yang berjalan",
         "content": {
@@ -1509,7 +1500,11 @@
             }
           },
           "duration_seconds": { "type": "integer", "nullable": true, "example": 138 },
-          "generation": { "type": "string", "example": "gen-000042" },
+          "generation": {
+            "type": "string",
+            "description": "batch yang menyajikan rendition",
+            "example": "gen-000042"
+          },
           "master_playlist_url": { "type": "string", "example": "/api/v1/playables/9003/master.m3u8" },
           "variants": { "type": "array", "items": { "$ref": "#/components/schemas/Variant" } },
           "subtitles": { "type": "array", "items": { "$ref": "#/components/schemas/Subtitle" } }

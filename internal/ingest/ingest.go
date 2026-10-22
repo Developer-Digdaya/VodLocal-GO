@@ -504,6 +504,11 @@ func (s *Service) execute(ctx context.Context, st *runState) error {
 	if err := s.switchGeneration(ctx, st); err != nil {
 		return s.fail(ctx, st, err)
 	}
+	if n, err := s.store.BackfillGenerationItems(ctx); err != nil {
+		s.log.Warn("gagal backfill generation_items", "error", err)
+	} else if n > 0 {
+		s.log.Info("backfill generation_items", "rows", n)
+	}
 
 	// Generation lama dibiarkan 'retired' di disk: paket ini tidak pernah
 	// menghapusnya otomatis, penghapusan hanya lewat panel admin. Yang

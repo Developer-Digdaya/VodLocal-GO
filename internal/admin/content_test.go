@@ -530,7 +530,7 @@ func TestSyncPageShowsListContent(t *testing.T) {
 		"content-dialog",
 		"Simpan pilihan (0)",
 		"Batal",
-		"Remove all batch",
+		"Hapus semua unduhan",
 		"Riwayat",
 		`name="per_page"`,
 		// Tiga tab kategori, satu panel bersama, tanpa data-provider tunggal.

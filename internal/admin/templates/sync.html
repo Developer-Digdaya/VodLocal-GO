@@ -1,6 +1,10 @@
 {{define "content"}}
 <h1>Sinkronisasi</h1>
 
+<p class="notice">
+  Sync membuat batch baru. Unduhan lama tidak dihapus dan tidak disembunyikan; semua konten yang sudah diunduh tetap bisa diputar sampai dihapus.
+</p>
+
 {{if .Active}}
 <h2>Berjalan sekarang</h2>
 <p class="muted">Run #{{.Active.ID}} · {{.Active.Status}}{{if .Active.Phase}} · {{.Active.Phase}}{{end}}
@@ -111,7 +115,7 @@
   </div>
 
   <div class="dialog-foot">
-    <button type="button" class="danger" id="purge-content" title="Hapus semua batch dan katalog">Remove all batch</button>
+    <button type="button" class="danger" id="purge-content" title="Hapus semua unduhan dan katalog">Hapus semua unduhan</button>
     <span class="spacer"></span>
     <button type="button" id="save-selection" disabled>Simpan pilihan (0)</button>
     <button type="button" class="secondary" id="cancel-content">Batal</button>
@@ -416,7 +420,7 @@
   // menghapus seluruh storage (semua generation) dan membersihkan katalog.
   // Server membalas 303 ke /sync dengan flash berisi jumlah yang dihapus.
   function removeAllBatch() {
-    if (!window.confirm('Hapus SEMUA batch dan katalog? Tindakan ini tidak bisa dibatalkan.')) { return; }
+    if (!window.confirm('Hapus SEMUA unduhan dan katalog? Semua batch akan hilang. Tindakan ini tidak bisa dibatalkan.')) { return; }
 
     var form = document.createElement('form');
     form.method = 'post';

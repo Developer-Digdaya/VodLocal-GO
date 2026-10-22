@@ -12,22 +12,36 @@ import (
 	"vodlocal/internal/response"
 )
 
-// titlesSelect mengambil satu baris judul lengkap dengan jumlah episode.
-// Kolomnya dipakai bersama oleh daftar judul dan detail judul.
+// titlesSelect mengambil satu baris judul lengkap dengan jumlah episode dan
+// label generation yang menyimpan artwork. Label dipilih dari rendition ready
+// pada generation mana pun yang sudah selesai (bukan building/failed), sehingga
+// batch lama tetap bisa dipakai.
 const titlesSelect = `SELECT t.id, COALESCE(pr.code, ''), t.kind, t.title, t.slug,
 	t.synopsis, t.release_year, t.content_rating, t.language,
 	t.poster_path, t.backdrop_path, t.duration_seconds,
-	(SELECT COUNT(*) FROM episodes e WHERE e.title_id = t.id)`
+	(SELECT COUNT(*) FROM episodes e WHERE e.title_id = t.id),
+	COALESCE((
+		SELECT g.label
+		FROM playables pl
+		JOIN renditions rd ON rd.playable_id = pl.id
+		JOIN generations g ON g.id = rd.generation_id
+		WHERE pl.title_id = t.id AND rd.status = 'ready'
+		  AND g.status NOT IN ('building', 'failed')
+		ORDER BY g.created_at DESC, g.id DESC
+		LIMIT 1
+	), '')`
 
 // titlesFrom adalah sumber data judul beserta kode providernya.
 const titlesFrom = ` FROM titles t JOIN providers pr ON pr.id = t.provider_id`
 
-// titleAvailable mensyaratkan adanya rendisi ready pada generation aktif
-// (api-spec §7.2). Satu-satunya placeholder-nya adalah generation_id.
+// titleAvailable mensyaratkan adanya rendition ready pada generation mana pun
+// yang sudah selesai. Generation tidak lagi menentukan visibilitas katalog.
 const titleAvailable = `EXISTS (
 	SELECT 1 FROM playables pl
 	JOIN renditions rd ON rd.playable_id = pl.id
-	WHERE pl.title_id = t.id AND rd.generation_id = ? AND rd.status = 'ready'
+	JOIN generations g ON g.id = rd.generation_id
+	WHERE pl.title_id = t.id AND rd.status = 'ready'
+	  AND g.status NOT IN ('building', 'failed')
 )`
 
 // titleSortOrders adalah whitelist sort → klausa ORDER BY. Input user tidak
@@ -121,10 +135,10 @@ func generationMediaURL(generation, rel string) any {
 	return "/media/" + generation + "/" + strings.TrimPrefix(path.Clean("/"+rel), "/")
 }
 
-// scanTitleItem membaca satu baris titlesSelect ke titleItem. genLabel adalah
-// label generation aktif yang sudah di-resolve handler; nilainya menjadi prefix
-// URL poster dan backdrop.
-func scanTitleItem(sc rowScanner, genLabel string) (titleItem, error) {
+// scanTitleItem membaca satu baris titlesSelect ke titleItem. Label generation
+// untuk poster/backdrop sudah ikut di SELECT, jadi tidak lagi bergantung pada
+// generation aktif.
+func scanTitleItem(sc rowScanner) (titleItem, error) {
 	var (
 		item     titleItem
 		synopsis sql.NullString
@@ -134,11 +148,12 @@ func scanTitleItem(sc rowScanner, genLabel string) (titleItem, error) {
 		backdrop sql.NullString
 		year     sql.NullInt64
 		duration sql.NullInt64
+		artLabel string
 	)
 	err := sc.Scan(
 		&item.ID, &item.Provider, &item.Kind, &item.Title, &item.Slug,
 		&synopsis, &year, &rating, &language, &poster, &backdrop, &duration,
-		&item.EpisodeCount,
+		&item.EpisodeCount, &artLabel,
 	)
 	if err != nil {
 		return titleItem{}, err
@@ -147,8 +162,8 @@ func scanTitleItem(sc rowScanner, genLabel string) (titleItem, error) {
 	item.ReleaseYear = nullInt64(year)
 	item.ContentRating = nullString(rating)
 	item.Language = nullString(language)
-	item.PosterURL = generationMediaURL(genLabel, poster.String)
-	item.BackdropURL = generationMediaURL(genLabel, backdrop.String)
+	item.PosterURL = generationMediaURL(artLabel, poster.String)
+	item.BackdropURL = generationMediaURL(artLabel, backdrop.String)
 	item.DurationSeconds = nullInt64(duration)
 	item.Genres = []string{}
 	item.Playable = true
@@ -206,11 +221,6 @@ type listData[T any] struct {
 
 // handleTitles melayani GET /titles.
 func (s *server) handleTitles(w http.ResponseWriter, r *http.Request) {
-	gen, ok := s.requireGeneration(w, r)
-	if !ok {
-		return
-	}
-
 	q := r.URL.Query()
 	fields := map[string]string{}
 	page := parsePagination(q, fields)
@@ -242,7 +252,7 @@ func (s *server) handleTitles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	conditions := []string{"t.is_published = 1", titleAvailable}
-	args := []any{gen.ID}
+	args := make([]any, 0, 4)
 
 	if search != "" {
 		conditions = append(conditions, `t.title LIKE ? ESCAPE '\'`)
@@ -281,7 +291,7 @@ func (s *server) handleTitles(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]titleItem, 0, page.PerPage)
 	for rows.Next() {
-		item, err := scanTitleItem(rows, gen.Label)
+		item, err := scanTitleItem(rows)
 		if err != nil {
 			s.internalError(w, r, err)
 			return
@@ -346,11 +356,11 @@ func (s *server) genresByTitle(ctx context.Context, items []titleItem) (map[int6
 
 // loadTitle mengambil satu judul beserta status ketersediaannya pada generation
 // aktif. sql.ErrNoRows berarti judul tidak ada atau tidak dipublikasikan.
-func (s *server) loadTitle(ctx context.Context, gen activeGeneration, id int64) (titleItem, bool, error) {
+func (s *server) loadTitle(ctx context.Context, id int64) (titleItem, bool, error) {
 	row := s.read.QueryRowContext(ctx,
 		titlesSelect+titlesFrom+` WHERE t.id = ? AND t.is_published = 1`, id)
 
-	item, err := scanTitleItem(row, gen.Label)
+	item, err := scanTitleItem(row)
 	if err != nil {
 		return titleItem{}, false, err
 	}
@@ -359,8 +369,10 @@ func (s *server) loadTitle(ctx context.Context, gen activeGeneration, id int64) 
 	if err := s.read.QueryRowContext(ctx,
 		`SELECT COUNT(*)
 		 FROM playables pl JOIN renditions rd ON rd.playable_id = pl.id
-		 WHERE pl.title_id = ? AND rd.generation_id = ? AND rd.status = 'ready'`,
-		id, gen.ID,
+		 JOIN generations g ON g.id = rd.generation_id
+		 WHERE pl.title_id = ? AND rd.status = 'ready'
+		   AND g.status NOT IN ('building', 'failed')`,
+		id,
 	).Scan(&ready); err != nil {
 		return titleItem{}, false, err
 	}
@@ -370,11 +382,6 @@ func (s *server) loadTitle(ctx context.Context, gen activeGeneration, id int64) 
 
 // handleTitleDetail melayani GET /titles/{id}.
 func (s *server) handleTitleDetail(w http.ResponseWriter, r *http.Request) {
-	gen, ok := s.requireGeneration(w, r)
-	if !ok {
-		return
-	}
-
 	id, valid := pathID(r, "id")
 	if !valid {
 		response.Error(w, response.CodeTitleNotFound, nil)
@@ -382,7 +389,7 @@ func (s *server) handleTitleDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	item, available, err := s.loadTitle(ctx, gen, id)
+	item, available, err := s.loadTitle(ctx, id)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		response.Error(w, response.CodeTitleNotFound, nil)
@@ -401,7 +408,7 @@ func (s *server) handleTitleDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	firstPlayable, err := s.firstPlayableID(ctx, gen, id)
+	firstPlayable, err := s.firstPlayableID(ctx, id)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -446,18 +453,20 @@ func (s *server) seasonsFor(ctx context.Context, titleID int64) ([]seasonItem, e
 }
 
 // firstPlayableID mencari playable siap pertama menurut urutan tayang.
-func (s *server) firstPlayableID(ctx context.Context, gen activeGeneration, titleID int64) (any, error) {
+func (s *server) firstPlayableID(ctx context.Context, titleID int64) (any, error) {
 	var id int64
 	err := s.read.QueryRowContext(ctx,
 		`SELECT pl.id
 		 FROM playables pl
 		 JOIN renditions rd ON rd.playable_id = pl.id
+		 JOIN generations g ON g.id = rd.generation_id
 		 LEFT JOIN episodes e ON e.id = pl.episode_id
-		 WHERE pl.title_id = ? AND rd.generation_id = ? AND rd.status = 'ready'
+		 WHERE pl.title_id = ? AND rd.status = 'ready'
+		   AND g.status NOT IN ('building', 'failed')
 		 GROUP BY pl.id
 		 ORDER BY COALESCE(e.season_number, 0) ASC, COALESCE(e.episode_number, 0) ASC, pl.id ASC
 		 LIMIT 1`,
-		titleID, gen.ID,
+		titleID,
 	).Scan(&id)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -470,11 +479,6 @@ func (s *server) firstPlayableID(ctx context.Context, gen activeGeneration, titl
 
 // handleTitleEpisodes melayani GET /titles/{id}/episodes.
 func (s *server) handleTitleEpisodes(w http.ResponseWriter, r *http.Request) {
-	gen, ok := s.requireGeneration(w, r)
-	if !ok {
-		return
-	}
-
 	id, valid := pathID(r, "id")
 	if !valid {
 		response.Error(w, response.CodeTitleNotFound, nil)
@@ -502,7 +506,7 @@ func (s *server) handleTitleEpisodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	_, available, err := s.loadTitle(ctx, gen, id)
+	_, available, err := s.loadTitle(ctx, id)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		response.Error(w, response.CodeTitleNotFound, nil)
@@ -516,7 +520,7 @@ func (s *server) handleTitleEpisodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	conditions := []string{"e.title_id = ?"}
-	args := []any{gen.ID, id}
+	args := []any{id}
 	if hasSeason {
 		conditions = append(conditions, "e.season_number = ?")
 		args = append(args, season)
@@ -525,7 +529,7 @@ func (s *server) handleTitleEpisodes(w http.ResponseWriter, r *http.Request) {
 
 	var total int64
 	if err := s.read.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM episodes e`+where, args[1:]...).Scan(&total); err != nil {
+		`SELECT COUNT(*) FROM episodes e`+where, args...).Scan(&total); err != nil {
 		s.internalError(w, r, err)
 		return
 	}
@@ -538,8 +542,29 @@ func (s *server) handleTitleEpisodes(w http.ResponseWriter, r *http.Request) {
 		        EXISTS (
 		            SELECT 1 FROM playables pl
 		            JOIN renditions rd ON rd.playable_id = pl.id
-		            WHERE pl.episode_id = e.id AND rd.generation_id = ? AND rd.status = 'ready'
-		        )
+		            JOIN generations g ON g.id = rd.generation_id
+		            WHERE pl.episode_id = e.id AND rd.status = 'ready'
+		              AND g.status NOT IN ('building', 'failed')
+		        ),
+		        COALESCE((
+		            SELECT g.label
+		            FROM playables pl
+		            JOIN renditions rd ON rd.playable_id = pl.id
+		            JOIN generations g ON g.id = rd.generation_id
+		            WHERE pl.episode_id = e.id AND rd.status = 'ready'
+		              AND g.status NOT IN ('building', 'failed')
+		            ORDER BY g.created_at DESC, g.id DESC
+		            LIMIT 1
+		        ), (
+		            SELECT g.label
+		            FROM playables pl
+		            JOIN renditions rd ON rd.playable_id = pl.id
+		            JOIN generations g ON g.id = rd.generation_id
+		            WHERE pl.title_id = e.title_id AND rd.status = 'ready'
+		              AND g.status NOT IN ('building', 'failed')
+		            ORDER BY g.created_at DESC, g.id DESC
+		            LIMIT 1
+		        ), '')
 		 FROM episodes e`+where+`
 		 ORDER BY e.season_number ASC, e.episode_number ASC
 		 LIMIT ? OFFSET ?`,
@@ -560,9 +585,10 @@ func (s *server) handleTitleEpisodes(w http.ResponseWriter, r *http.Request) {
 			airDate  sql.NullString
 			still    sql.NullString
 			playable sql.NullInt64
+			artLabel string
 		)
 		if err := rows.Scan(&item.ID, &item.SeasonNumber, &item.EpisodeNumber, &name, &synopsis,
-			&duration, &airDate, &still, &playable, &item.Ready); err != nil {
+			&duration, &airDate, &still, &playable, &item.Ready, &artLabel); err != nil {
 			s.internalError(w, r, err)
 			return
 		}
@@ -570,7 +596,7 @@ func (s *server) handleTitleEpisodes(w http.ResponseWriter, r *http.Request) {
 		item.Synopsis = nullString(synopsis)
 		item.DurationSeconds = nullInt64(duration)
 		item.AirDate = nullString(airDate)
-		item.StillURL = generationMediaURL(gen.Label, still.String)
+		item.StillURL = generationMediaURL(artLabel, still.String)
 		item.PlayableID = nullInt64(playable)
 		items = append(items, item)
 	}
@@ -630,11 +656,6 @@ type searchData struct {
 
 // handleSearch melayani GET /search.
 func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
-	gen, ok := s.requireGeneration(w, r)
-	if !ok {
-		return
-	}
-
 	q := r.URL.Query()
 	search := normalizeSearchText(q.Get("q"))
 	if len([]rune(search)) < minSearchLength {
@@ -686,7 +707,7 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if searchType == "all" || searchType == "title" {
-		titles, total, err := s.searchTitles(r.Context(), gen, search, kind, genre, limit)
+		titles, total, err := s.searchTitles(r.Context(), search, kind, genre, limit)
 		if err != nil {
 			s.internalError(w, r, err)
 			return
@@ -696,7 +717,7 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if searchType == "all" || searchType == "episode" {
-		episodes, total, err := s.searchEpisodes(r.Context(), gen, search, kind, genre, limit)
+		episodes, total, err := s.searchEpisodes(r.Context(), search, kind, genre, limit)
 		if err != nil {
 			s.internalError(w, r, err)
 			return
@@ -710,13 +731,13 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 // searchTitles mengembalikan judul yang cocok pada kolom titles.title, terurut
 // menurut aturan §4.1 (prefix lebih dulu, lalu terbaru).
-func (s *server) searchTitles(ctx context.Context, gen activeGeneration, search, kind, genre string, limit int64) ([]searchTitleItem, int64, error) {
+func (s *server) searchTitles(ctx context.Context, search, kind, genre string, limit int64) ([]searchTitleItem, int64, error) {
 	conditions := []string{
 		"t.is_published = 1",
 		titleAvailable,
 		`t.title LIKE ? ESCAPE '\'`,
 	}
-	args := []any{gen.ID, likeContains(search)}
+	args := []any{likeContains(search)}
 
 	if kind != "" {
 		conditions = append(conditions, "t.kind = ?")
@@ -752,7 +773,7 @@ func (s *server) searchTitles(ctx context.Context, gen activeGeneration, search,
 	items := make([]searchTitleItem, 0, limit)
 	titles := make([]titleItem, 0, limit)
 	for rows.Next() {
-		item, err := scanTitleItem(rows, gen.Label)
+		item, err := scanTitleItem(rows)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -789,13 +810,13 @@ func (s *server) searchTitles(ctx context.Context, gen activeGeneration, search,
 // searchEpisodes mengembalikan episode yang namanya cocok. Episode yang hanya
 // cocok karena judulnya cocok tidak diikutkan, sehingga satu episode tidak
 // pernah muncul dua kali (§7.5).
-func (s *server) searchEpisodes(ctx context.Context, gen activeGeneration, search, kind, genre string, limit int64) ([]searchEpisodeItem, int64, error) {
+func (s *server) searchEpisodes(ctx context.Context, search, kind, genre string, limit int64) ([]searchEpisodeItem, int64, error) {
 	conditions := []string{
 		"t.is_published = 1",
 		titleAvailable,
 		`e.name LIKE ? ESCAPE '\'`,
 	}
-	args := []any{gen.ID, likeContains(search)}
+	args := []any{likeContains(search)}
 
 	if kind != "" {
 		conditions = append(conditions, "t.kind = ?")
@@ -826,12 +847,33 @@ func (s *server) searchEpisodes(ctx context.Context, gen activeGeneration, searc
 		        EXISTS (
 		            SELECT 1 FROM playables pl
 		            JOIN renditions rd ON rd.playable_id = pl.id
-		            WHERE pl.episode_id = e.id AND rd.generation_id = ? AND rd.status = 'ready'
-		        )`+episodesFrom+where+`
+		            JOIN generations g ON g.id = rd.generation_id
+		            WHERE pl.episode_id = e.id AND rd.status = 'ready'
+		              AND g.status NOT IN ('building', 'failed')
+		        ),
+		        COALESCE((
+		            SELECT g.label
+		            FROM playables pl
+		            JOIN renditions rd ON rd.playable_id = pl.id
+		            JOIN generations g ON g.id = rd.generation_id
+		            WHERE pl.episode_id = e.id AND rd.status = 'ready'
+		              AND g.status NOT IN ('building', 'failed')
+		            ORDER BY g.created_at DESC, g.id DESC
+		            LIMIT 1
+		        ), (
+		            SELECT g.label
+		            FROM playables pl
+		            JOIN renditions rd ON rd.playable_id = pl.id
+		            JOIN generations g ON g.id = rd.generation_id
+		            WHERE pl.title_id = e.title_id AND rd.status = 'ready'
+		              AND g.status NOT IN ('building', 'failed')
+		            ORDER BY g.created_at DESC, g.id DESC
+		            LIMIT 1
+		        ), '')`+episodesFrom+where+`
 		 ORDER BY CASE WHEN lower(e.name) LIKE ? ESCAPE '\' THEN 0 ELSE 1 END,
 		          e.updated_at DESC, e.id DESC
 		 LIMIT ?`,
-		append([]any{gen.ID}, listArgs...)...)
+		listArgs...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -844,13 +886,14 @@ func (s *server) searchEpisodes(ctx context.Context, gen activeGeneration, searc
 			name     sql.NullString
 			still    sql.NullString
 			playable sql.NullInt64
+			artLabel string
 		)
 		if err := rows.Scan(&item.ID, &item.TitleID, &item.Title, &item.SeasonNumber,
-			&item.EpisodeNumber, &name, &still, &playable, &item.Ready); err != nil {
+			&item.EpisodeNumber, &name, &still, &playable, &item.Ready, &artLabel); err != nil {
 			return nil, 0, err
 		}
 		item.Name = nullString(name)
-		item.StillURL = generationMediaURL(gen.Label, still.String)
+		item.StillURL = generationMediaURL(artLabel, still.String)
 		item.PlayableID = nullInt64(playable)
 		item.Match = "episode"
 		items = append(items, item)

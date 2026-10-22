@@ -79,7 +79,7 @@ func TestStorageGenerationPagination(t *testing.T) {
 		t.Fatalf("status = %d, mau 200 (body=%s)", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Halaman 3 / 3", "gen-001004", "dari 15 generation"} {
+	for _, want := range []string{"Halaman 3 / 3", "gen-001004", "dari 15 batch"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("pagination generation tidak memuat %q", want)
 		}

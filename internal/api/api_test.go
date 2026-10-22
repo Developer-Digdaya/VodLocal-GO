@@ -873,13 +873,12 @@ func TestProgressUpsert(t *testing.T) {
 	}
 }
 
-// TestNoActiveGeneration memastikan katalog dan playback menolak dengan
-// 503/4009 bila belum ada generation aktif (tugas uji #10).
-func TestNoActiveGeneration(t *testing.T) {
+// TestRetiredGenerationStillServes memastikan konten yang sudah diunduh tetap
+// tersedia walau batch tersebut bukan batch aktif.
+func TestRetiredGenerationStillServes(t *testing.T) {
 	f := newFixture(t, nil)
 	token, _ := f.registerDevice("Tablet Kursi 10", "AA:BB:CC:DD:EE:10")
 
-	// Generation aktif dipensiunkan.
 	f.exec(`UPDATE generations SET status = 'retired' WHERE id = 1`)
 
 	for _, target := range []string{
@@ -888,12 +887,19 @@ func TestNoActiveGeneration(t *testing.T) {
 		"/titles/1/episodes",
 		"/search?q=cinta",
 		"/playables/9001",
-		"/playables/9001/master.m3u8",
 	} {
 		env, rec := f.do(http.MethodGet, target, token, nil)
-		if rec.Code != http.StatusServiceUnavailable || env.Code != response.CodeNoActiveGeneration {
-			t.Fatalf("%s: status/code = %d/%d, mau 503/4009 (body=%s)", target, rec.Code, env.Code, rec.Body.String())
+		if rec.Code != http.StatusOK || env.Code != response.CodeSuccess {
+			t.Fatalf("%s: status/code = %d/%d, mau 200/0 (body=%s)", target, rec.Code, env.Code, rec.Body.String())
 		}
+	}
+
+	rec := f.request(http.MethodGet, "/playables/9001/master.m3u8", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("master playlist: status = %d, mau 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if !strings.HasPrefix(rec.Body.String(), "#EXTM3U") {
+		t.Fatalf("master playlist bukan HLS: %s", rec.Body.String())
 	}
 }
 

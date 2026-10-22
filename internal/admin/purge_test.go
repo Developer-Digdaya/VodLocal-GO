@@ -304,10 +304,10 @@ func TestSyncPageShowsRemoveAllBatch(t *testing.T) {
 	body := rec.Body.String()
 
 	for _, want := range []string{
-		"Remove all batch",
+		"Hapus semua unduhan",
 		`id="purge-content"`,
 		"/content/purge",
-		"window.confirm('Hapus SEMUA batch dan katalog? Tindakan ini tidak bisa dibatalkan.')",
+		"window.confirm('Hapus SEMUA unduhan dan katalog? Semua batch akan hilang. Tindakan ini tidak bisa dibatalkan.')",
 		"form.method = 'post'",
 		"confirmation.value = 'PURGE'",
 		"content-dialog",

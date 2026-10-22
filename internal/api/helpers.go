@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -31,46 +30,6 @@ const (
 	minSearchLength = 2
 	maxSearchLength = 100
 )
-
-// errNoActiveGeneration menandai database yang belum punya generation
-// berstatus 'active' (§6.5 kode 4009).
-var errNoActiveGeneration = errors.New("api: tidak ada generation aktif")
-
-// activeGeneration adalah generation media yang sedang dilayani katalog.
-type activeGeneration struct {
-	ID    int64
-	Label string
-}
-
-// activeGeneration membaca satu-satunya generation berstatus 'active'.
-func (s *server) activeGeneration(ctx context.Context) (activeGeneration, error) {
-	var gen activeGeneration
-	err := s.read.QueryRowContext(ctx,
-		`SELECT id, label FROM generations WHERE status = 'active'`).Scan(&gen.ID, &gen.Label)
-	if errors.Is(err, sql.ErrNoRows) {
-		return activeGeneration{}, errNoActiveGeneration
-	}
-	if err != nil {
-		return activeGeneration{}, err
-	}
-	return gen, nil
-}
-
-// requireGeneration mengambil generation aktif dan menulis response 503/4009
-// (atau 500 untuk kegagalan lain) bila tidak tersedia. Nilai balik kedua false
-// berarti response sudah dikirim dan handler harus berhenti.
-func (s *server) requireGeneration(w http.ResponseWriter, r *http.Request) (activeGeneration, bool) {
-	gen, err := s.activeGeneration(r.Context())
-	switch {
-	case err == nil:
-		return gen, true
-	case errors.Is(err, errNoActiveGeneration):
-		response.Error(w, response.CodeNoActiveGeneration, nil)
-	default:
-		s.internalError(w, r, err)
-	}
-	return activeGeneration{}, false
-}
 
 // pageMeta adalah bentuk data.meta untuk endpoint list (§4, R12).
 type pageMeta struct {

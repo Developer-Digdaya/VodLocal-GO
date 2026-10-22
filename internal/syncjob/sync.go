@@ -370,6 +370,11 @@ func (s *Syncer) execute(ctx context.Context, st *runState) (Result, error) {
 	if err := s.switchGeneration(dbCtx, st); err != nil {
 		return fail(err)
 	}
+	if n, err := s.store.BackfillGenerationItems(dbCtx); err != nil {
+		s.log.Warn("gagal backfill generation_items", "error", err)
+	} else if n > 0 {
+		s.log.Info("backfill generation_items", "rows", n)
+	}
 
 	// Langkah 12: buang playable/episode/title yang tidak lagi punya rendition.
 	// Generation 'retired' sengaja tidak pernah dihapus di sini: penghapusan

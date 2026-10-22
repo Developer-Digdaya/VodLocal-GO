@@ -29,13 +29,36 @@ type generationView struct {
 	RetiredAt  string
 }
 
-// Deletable melaporkan apakah generation berstatus retired/failed.
-//
-// Aturan proyek sekarang membolehkan penghapusan generation berstatus apa pun
-// (termasuk active/building), jadi method ini hanya dipertahankan untuk
-// kompatibilitas dan tidak boleh dipakai memblokir permintaan hapus.
-func (g generationView) Deletable() bool {
-	return g.Status == "retired" || g.Status == "failed"
+// StatusLabel menampilkan status batch tanpa istilah "retired".
+func (g generationView) StatusLabel() string {
+	switch g.Status {
+	case "retired":
+		return "lama"
+	case "active":
+		return "aktif"
+	case "building":
+		return "membangun"
+	case "failed":
+		return "gagal"
+	default:
+		return g.Status
+	}
+}
+
+// GenerationStatusLabel adalah label status batch untuk baris konten.
+func (c contentItemView) GenerationStatusLabel() string {
+	switch c.GenerationStatus {
+	case "retired":
+		return "lama"
+	case "active":
+		return "aktif"
+	case "building":
+		return "membangun"
+	case "failed":
+		return "gagal"
+	default:
+		return c.GenerationStatus
+	}
 }
 
 // contentItemView adalah satu baris generation_items yang siap dirender:
@@ -432,6 +455,7 @@ type storageItem struct {
 	GenerationLabel  string
 	ProviderID       int64
 	ProviderCode     string
+	Category         string
 	SeriesExternalID string
 	SeriesTitle      string
 }
@@ -442,13 +466,13 @@ func (a *Admin) storageItemByID(ctx context.Context, id int64) (*storageItem, er
 	var item storageItem
 	err := a.read.QueryRowContext(ctx, `
 SELECT gi.id, gi.generation_id, g.label, gi.provider_id, COALESCE(p.code, ''),
-       gi.series_external_id, gi.series_title
+       gi.category, gi.series_external_id, gi.series_title
 FROM generation_items gi
 JOIN generations g ON g.id = gi.generation_id
 LEFT JOIN providers p ON p.id = gi.provider_id
 WHERE gi.id = ?`, id,
 	).Scan(&item.ID, &item.GenerationID, &item.GenerationLabel, &item.ProviderID,
-		&item.ProviderCode, &item.SeriesExternalID, &item.SeriesTitle)
+		&item.ProviderCode, &item.Category, &item.SeriesExternalID, &item.SeriesTitle)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -481,27 +505,27 @@ LIMIT 1`, generationID, providerID, externalID,
 	return strings.TrimSpace(playlist.String), nil
 }
 
-// seriesRootFromPlaylist menurunkan folder series relatif
-// ("dramahits/series/<uuid>") dari playlist_path
-// ("dramahits/series/<uuid>/<episode>/<quality>/index.m3u8").
-//
-// String kosong berarti path tidak cukup dalam untuk menunjuk sebuah folder
-// series, sehingga pemanggil tidak menghapus direktori apa pun.
-func seriesRootFromPlaylist(playlistPath string) string {
+// seriesRootFromPlaylist menurunkan folder konten relatif dari playlist_path.
+// Series memakai 5 level (provider/series/<uuid>/<episode>/<quality>/index.m3u8),
+// movie memakai 4 level (provider/movie/<id>/<quality>/index.m3u8).
+func seriesRootFromPlaylist(playlistPath string, movie bool) string {
 	trimmed := strings.TrimSpace(playlistPath)
 	if trimmed == "" {
 		return ""
 	}
 
 	// playlist_path selalu memakai pemisah '/' relatif ke root generation.
-	seriesRoot := path.Dir(path.Dir(path.Dir(filepath.ToSlash(trimmed))))
+	root := path.Dir(path.Dir(path.Dir(filepath.ToSlash(trimmed))))
+	if movie {
+		root = path.Dir(path.Dir(filepath.ToSlash(trimmed)))
+	}
 	switch {
-	case seriesRoot == "", seriesRoot == ".", seriesRoot == "/":
+	case root == "", root == ".", root == "/":
 		return ""
-	case seriesRoot == "..", strings.HasPrefix(seriesRoot, "../"):
+	case root == "..", strings.HasPrefix(root, "../"):
 		return ""
 	}
-	return seriesRoot
+	return root
 }
 
 // withinDir melaporkan apakah target berada di dalam base (bukan base itu
@@ -519,7 +543,7 @@ func withinDir(base, target string) bool {
 // tidak memenuhi MediaRooter dilewati (tidak ada akar direktori yang bisa
 // dipakai). Hasil filepath.Abs wajib berawalan `<mediaRoot>/<label>`; bila
 // tidak, errUnsafeMediaPath dikembalikan agar handler membatalkan permintaan.
-func (a *Admin) removeSeriesMedia(label, playlistPath string) error {
+func (a *Admin) removeSeriesMedia(label, playlistPath string, movie bool) error {
 	rooter, ok := a.media.(MediaRooter)
 	if a.media == nil || !ok {
 		a.log.Debug("admin: pengelola media tanpa Root(); folder series tidak dihapus",
@@ -532,7 +556,7 @@ func (a *Admin) removeSeriesMedia(label, playlistPath string) error {
 		return nil
 	}
 
-	seriesRoot := seriesRootFromPlaylist(playlistPath)
+	seriesRoot := seriesRootFromPlaylist(playlistPath, movie)
 	if seriesRoot == "" {
 		return nil
 	}
@@ -643,7 +667,7 @@ func (a *Admin) handleStorageItemDelete(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if playlist != "" {
-		if err := a.removeSeriesMedia(item.GenerationLabel, playlist); err != nil {
+		if err := a.removeSeriesMedia(item.GenerationLabel, playlist, item.Category == "movie"); err != nil {
 			if errors.Is(err, errUnsafeMediaPath) {
 				a.renderStorage(w, r, http.StatusBadRequest,
 					"Path media konten tidak valid; penghapusan dibatalkan.")

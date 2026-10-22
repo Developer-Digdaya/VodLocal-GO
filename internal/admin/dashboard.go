@@ -51,7 +51,7 @@ func (a *Admin) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	catalog, err := a.catalogStats(ctx, generation)
+	catalog, err := a.catalogStats(ctx)
 	if err != nil {
 		a.internalError(w, r, err, "Gagal menghitung isi katalog.")
 		return
@@ -98,9 +98,9 @@ func (a *Admin) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 // catalogStats menghitung judul, episode, playable, dan rendition siap.
 //
-// Rendition dihitung hanya pada generation aktif karena angka itu yang benar
-// benar bisa diputar tablet.
-func (a *Admin) catalogStats(ctx context.Context, generation *generationView) (catalogStats, error) {
+// Rendition dihitung lintas batch: selama masih ada rendition ready, konten
+// tetap bisa diputar walau batch tersebut bukan batch aktif.
+func (a *Admin) catalogStats(ctx context.Context) (catalogStats, error) {
 	var stats catalogStats
 
 	counts := []struct {
@@ -111,8 +111,8 @@ func (a *Admin) catalogStats(ctx context.Context, generation *generationView) (c
 		{`SELECT COUNT(*) FROM titles`, nil, &stats.Titles},
 		{`SELECT COUNT(*) FROM episodes`, nil, &stats.Episodes},
 		{`SELECT COUNT(*) FROM playables`, nil, &stats.Playables},
-		{`SELECT COUNT(*) FROM renditions WHERE status = 'ready' AND generation_id = ?`,
-			[]any{generationID(generation)}, &stats.RenditionsReady},
+		{`SELECT COUNT(*) FROM renditions WHERE status = 'ready'`,
+			nil, &stats.RenditionsReady},
 	}
 
 	for _, item := range counts {
@@ -121,14 +121,6 @@ func (a *Admin) catalogStats(ctx context.Context, generation *generationView) (c
 		}
 	}
 	return stats, nil
-}
-
-// generationID mengembalikan ID generation, atau 0 bila belum ada.
-func generationID(generation *generationView) int64 {
-	if generation == nil {
-		return 0
-	}
-	return generation.ID
 }
 
 // deviceStats menghitung perangkat terdaftar dan perangkat online (§10.4).

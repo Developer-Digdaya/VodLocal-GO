@@ -64,6 +64,11 @@ func run() error {
 	if err := st.Migrate(ctx); err != nil {
 		return err
 	}
+	if n, err := st.BackfillGenerationItems(ctx); err != nil {
+		logger.Warn("gagal backfill generation_items", "err", err)
+	} else if n > 0 {
+		logger.Info("backfill generation_items", "rows", n)
+	}
 
 	media, err := mediafs.New(cfg.MediaRoot)
 	if err != nil {
@@ -290,7 +295,7 @@ func safeJoin(root, rel string) (string, error) {
 	return fullAbs, nil
 }
 
-// readiness memeriksa database dan keberadaan generation aktif di disk.
+// readiness memeriksa database dan keberadaan batch yang punya media siap.
 type readiness struct {
 	store *store.Store
 	media *mediafs.Manager
@@ -302,11 +307,20 @@ func (r readiness) Ready(ctx context.Context) (bool, string) {
 	}
 
 	var label string
-	err := r.store.Read().QueryRowContext(ctx,
-		`SELECT label FROM generations WHERE status = 'active'`).Scan(&label)
+	err := r.store.Read().QueryRowContext(ctx, `
+SELECT g.label
+FROM generations g
+WHERE g.status NOT IN ('building', 'failed')
+  AND EXISTS (
+    SELECT 1 FROM renditions r
+    WHERE r.generation_id = g.id AND r.status = 'ready'
+  )
+ORDER BY CASE WHEN g.status = 'active' THEN 0 ELSE 1 END,
+         g.created_at DESC, g.id DESC
+LIMIT 1`).Scan(&label)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		return false, "no_active_generation"
+		return false, "no_media"
 	case err != nil:
 		return false, "db_unavailable"
 	}
