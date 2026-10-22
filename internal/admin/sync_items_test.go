@@ -151,6 +151,37 @@ func TestSyncStatusActiveUsesGenerationProgress(t *testing.T) {
 	}
 }
 
+// TestDashboardActiveSyncPollsStatus memastikan kartu sinkronisasi di
+// dashboard ikut memperbarui progres selama run masih aktif.
+func TestDashboardActiveSyncPollsStatus(t *testing.T) {
+	f := newFixture(t)
+	f.login()
+	seedTwoGenerationItems(f)
+	f.exec(`INSERT INTO sync_runs (id, generation_id, trigger_source, scope, status, phase, created_at)
+	        VALUES (6, 42, 'manual', 'selection', 'running', 'segments', '2026-10-20T11:00:00Z')`)
+
+	rec := f.get("/")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, mau 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`id="sync-progress"`,
+		`data-run-id="6"`,
+		`data-active="1"`,
+		"window.setInterval",
+		"statusURL = '/sync/' + runID + '/status'",
+		"75%",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("dashboard tidak memuat %q", want)
+		}
+	}
+	if strings.Contains(body, "//cdn.") || strings.Contains(body, "https://") {
+		t.Fatalf("dashboard tidak boleh memuat sumber eksternal/CDN")
+	}
+}
+
 // TestSyncDetailGenerationItems memastikan halaman /sync/{id} menampilkan tabel
 // progres per series beserta ringkasannya.
 func TestSyncDetailGenerationItems(t *testing.T) {

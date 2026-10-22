@@ -5,6 +5,41 @@
 <h2>Sinkronisasi berjalan</h2>
 {{template "sync_status" .ActiveSyncStatus}}
 <p class="small"><a href="/sync/{{.ActiveSync.ID}}">Detail run #{{.ActiveSync.ID}}</a></p>
+<script>
+(function () {
+  'use strict';
+
+  var progressElement = document.getElementById('sync-progress');
+  if (!progressElement) { return; }
+
+  var runID = progressElement.getAttribute('data-run-id');
+  var statusURL = '/sync/' + runID + '/status';
+
+  function isActive(element) {
+    return !!element && element.getAttribute('data-active') === '1';
+  }
+
+  var timer = window.setInterval(function () {
+    window.fetch(statusURL, { headers: { 'Accept': 'text/html' }, credentials: 'same-origin' })
+      .then(function (response) {
+        if (!response.ok) { throw new Error('HTTP ' + response.status); }
+        return response.text();
+      })
+      .then(function (html) {
+        var element = document.getElementById('sync-progress');
+        if (!element) { return; }
+        element.outerHTML = html;
+        if (!isActive(document.getElementById('sync-progress'))) {
+          window.clearInterval(timer);
+          window.location.reload();
+        }
+      })
+      .catch(function () {
+        window.clearInterval(timer);
+      });
+  }, 3000);
+})();
+</script>
 {{end}}
 
 {{if .Storage.Warn}}
