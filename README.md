@@ -324,6 +324,10 @@ Semua response JSON memakai envelope:
 Spesifikasi lengkap, termasuk contoh request/response dan error, tersedia di
 [`openapi.json`](./openapi.json) (OpenAPI 3.0.0). Impor langsung ke Postman.
 
+`postman_collection.json` memakai collection variable `baseUrl`, `bearerToken`, dan
+`apiKey`. Isi nilainya sekali di tab **Variables** collection; seluruh request memakai
+token yang sama.
+
 **Generation = batch unduhan, bukan gerbang visibilitas**
 
 - `generations` hanya metadata batch unduhan (label, status, ukuran, waktu). Status
