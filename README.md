@@ -601,7 +601,7 @@ tidak menghapus, tidak menyembunyikan, dan tidak memindahkan konten batch lama.
    dipakai sebagai satu playable (`playables.episode_id` NULL).
 5. **Dramahits short** — worker mengambil semua halaman episode, lalu memilih stream
    `device = android` (fallback `ios`).
-6. Master playlist diambil, lalu varian dipilih: **sisi pendek ≤ 480** dan terbesar
+6. Master playlist diambil, lalu varian dipilih: **sisi pendek ≤ 720** dan terbesar
    yang memenuhi; bila tidak ada, varian terkecil. Hanya satu varian yang diunduh.
 7. Playlist ditulis ulang, segmen diunduh, poster disimpan di folder konten.
 8. Progres per konten ditulis ke `generation_items`.
@@ -816,7 +816,7 @@ openapi.json         spesifikasi OpenAPI 3.0.0
 | Item | Status |
 | --- | --- |
 | Densgo series | `stream_url` pada daftar bernilai `null`; URL m3u8 wajib diambil dari `GET /episodes?seriesId=<id>` per episode |
-| Varian video | Hanya satu varian terpilih (sisi pendek ≤ 480p) yang diunduh dan disimpan |
+| Varian video | Hanya satu varian terpilih (sisi pendek ≤ 720p) yang diunduh dan disimpan |
 | Subtitle Dramahits (`EXT-X-MEDIA`) | Belum diunduh |
 | Live streaming | Tidak didukung; sistem ini menyimpan konten on-demand secara offline |
 | Banyak batch per konten | Didukung: konten tetap tersedia selama punya rendition `ready` di batch mana pun yang selesai. **Tidak perlu** carry-over/hardlink |

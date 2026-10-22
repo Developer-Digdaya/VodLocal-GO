@@ -58,7 +58,7 @@ func TestQualityLabel(t *testing.T) {
 	}
 }
 
-// TestSelectVariant memastikan aturan pemilihan varian: sisi pendek <= 480 dan
+// TestSelectVariant memastikan aturan pemilihan varian: sisi pendek <= 720 dan
 // terbesar, lalu varian terkecil bila tidak ada yang memenuhi.
 func TestSelectVariant(t *testing.T) {
 	cases := []struct {
@@ -68,7 +68,7 @@ func TestSelectVariant(t *testing.T) {
 		wantOK   bool
 	}{
 		{
-			name: "campuran memilih yang terbesar di bawah 480",
+			name: "campuran memilih yang terbesar di bawah 720",
 			variants: []hls.Variant{
 				variant(1920, 1080, 4000000, "hd.m3u8"),
 				variant(540, 960, 1500000, "portrait.m3u8"),
@@ -76,11 +76,11 @@ func TestSelectVariant(t *testing.T) {
 				variant(854, 480, 1200000, "medium.m3u8"),
 				variant(1280, 720, 2200000, "720.m3u8"),
 			},
-			wantURI: "medium.m3u8",
+			wantURI: "720.m3u8",
 			wantOK:  true,
 		},
 		{
-			name: "hanya varian besar memilih yang terkecil",
+			name: "hanya varian besar memilih 720 yang masih memenuhi",
 			variants: []hls.Variant{
 				variant(1920, 1080, 4000000, "full-hd.m3u8"),
 				variant(1280, 720, 2200000, "720.m3u8"),
@@ -108,12 +108,13 @@ func TestSelectVariant(t *testing.T) {
 			wantOK:  true,
 		},
 		{
-			name: "sisi pendek 480 masih diterima",
+			name: "sisi pendek 720 masih diterima",
 			variants: []hls.Variant{
 				variant(854, 480, 1200000, "480.m3u8"),
-				variant(640, 360, 800000, "360.m3u8"),
+				variant(1280, 720, 2200000, "720.m3u8"),
+				variant(1920, 1080, 4000000, "1080.m3u8"),
 			},
-			wantURI: "480.m3u8",
+			wantURI: "720.m3u8",
 			wantOK:  true,
 		},
 		{
@@ -156,9 +157,9 @@ func TestSelectVariant(t *testing.T) {
 	}
 }
 
-// TestSelectVariantFallbackPrefersSmallest memastikan fallback memakai bandwidth
-// terkecil ketika semua varian besar dan beresolusi sama-sama tidak diketahui.
-func TestSelectVariantFallbackPrefersSmallest(t *testing.T) {
+// TestSelectVariantPrefers720AtLimit memastikan varian 720p dipilih saat
+// menjadi kandidat terbesar yang masih memenuhi batas.
+func TestSelectVariantPrefers720AtLimit(t *testing.T) {
 	got, ok := selectVariant([]hls.Variant{
 		variant(1080, 1920, 3500000, "portrait-hd.m3u8"),
 		variant(1280, 720, 2200000, "720.m3u8"),
@@ -172,5 +173,20 @@ func TestSelectVariantFallbackPrefersSmallest(t *testing.T) {
 
 	if label := qualityLabel(got.Width, got.Height, got.Bandwidth); label != "720p" {
 		t.Errorf("qualityLabel = %q, mau 720p", label)
+	}
+}
+
+// TestSelectVariantFallbackSmallest memastikan varian terkecil dipakai ketika
+// semua varian berada di atas batas 720p.
+func TestSelectVariantFallbackSmallest(t *testing.T) {
+	got, ok := selectVariant([]hls.Variant{
+		variant(1080, 1920, 3500000, "portrait-full-hd.m3u8"),
+		variant(1440, 2560, 5000000, "qhd.m3u8"),
+	})
+	if !ok {
+		t.Fatal("selectVariant ok = false, mau true")
+	}
+	if got.URI != "portrait-full-hd.m3u8" {
+		t.Errorf("selectVariant = %q, mau portrait-full-hd.m3u8", got.URI)
 	}
 }

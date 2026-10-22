@@ -26,7 +26,7 @@
 //
 //   - ambil seluruh halaman episode setiap series lewat catalog.Source,
 //   - untuk setiap episode pilih stream android (fallback ios), ambil master
-//     playlist, turunkan ke satu varian (sisi pendek <= 480 dan terbesar),
+//     playlist, turunkan ke satu varian (sisi pendek <= 720 dan terbesar),
 //     tulis playlist lokal, lalu unduh seluruh segmen dan key ke staging,
 //   - simpan providers/titles/episodes/playables/renditions,
 //   - catat progres setiap series ke generation_items (status, tahap, jumlah

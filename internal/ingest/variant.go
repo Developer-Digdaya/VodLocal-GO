@@ -8,9 +8,9 @@ import (
 )
 
 // maxShortSide adalah batas sisi pendek variant yang masih dianggap layak
-// untuk perangkat seluler. Kandidat terbesar di bawah batas ini dipilih supaya
-// kualitas gambar setinggi mungkin tanpa membebani jaringan.
-const maxShortSide = 480
+// untuk perangkat tablet (720p). Kandidat terbesar di bawah batas ini dipilih
+// supaya kualitas gambar setinggi mungkin tanpa membebani jaringan.
+const maxShortSide = 720
 
 // shortSide mengembalikan sisi pendek sebuah resolusi (min(width,height)), atau
 // 0 bila resolusinya tidak diketahui.

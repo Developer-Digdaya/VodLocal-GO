@@ -356,7 +356,7 @@ func stagingDirs(t *testing.T, root string) []string {
 // --------------------------------------------------------------- skenario ---
 
 // TestIngestHappyPath memastikan satu series dengan satu episode menghasilkan
-// generation aktif: varian 640x360 (bukan 540x960) dipilih, playlist dan
+// generation aktif: varian 540x960 (terbesar yang <=720) dipilih, playlist dan
 // segmennya ada di disk, dan seluruh baris database terisi.
 func TestIngestHappyPath(t *testing.T) {
 	srv := newHLSServer(t)
@@ -387,15 +387,15 @@ func TestIngestHappyPath(t *testing.T) {
 		t.Errorf("generations.file_count = %d, mau > 0", got)
 	}
 
-	// Rendition: varian kecil yang dipilih, bukan yang portrait 540x960.
-	if got := queryString(t, env.store.Read(), `SELECT quality FROM renditions`); got != "360p" {
-		t.Errorf("renditions.quality = %q, mau 360p", got)
+	// Rendition: varian terbesar yang masih <=720 (540x960).
+	if got := queryString(t, env.store.Read(), `SELECT quality FROM renditions`); got != "540p" {
+		t.Errorf("renditions.quality = %q, mau 540p", got)
 	}
-	if got := queryInt(t, env.store.Read(), `SELECT width FROM renditions`); got != 640 {
-		t.Errorf("renditions.width = %d, mau 640", got)
+	if got := queryInt(t, env.store.Read(), `SELECT width FROM renditions`); got != 540 {
+		t.Errorf("renditions.width = %d, mau 540", got)
 	}
-	if got := queryInt(t, env.store.Read(), `SELECT height FROM renditions`); got != 360 {
-		t.Errorf("renditions.height = %d, mau 360", got)
+	if got := queryInt(t, env.store.Read(), `SELECT height FROM renditions`); got != 960 {
+		t.Errorf("renditions.height = %d, mau 960", got)
 	}
 	if got := queryString(t, env.store.Read(), `SELECT status FROM renditions`); got != "ready" {
 		t.Errorf("renditions.status = %q, mau ready", got)
@@ -405,7 +405,7 @@ func TestIngestHappyPath(t *testing.T) {
 	}
 
 	// Folder media memakai UUID provider, bukan slug/sNNENN.
-	wantPlaylist := seriesPlaylistPath(testSeriesID, testEpisodeID, "360p")
+	wantPlaylist := seriesPlaylistPath(testSeriesID, testEpisodeID, "540p")
 	if got := queryString(t, env.store.Read(), `SELECT playlist_path FROM renditions`); got != wantPlaylist {
 		t.Errorf("renditions.playlist_path = %q, mau %q", got, wantPlaylist)
 	}
@@ -421,8 +421,8 @@ func TestIngestHappyPath(t *testing.T) {
 	if _, ok := queryNullString(t, env.store.Read(), `SELECT verified_at FROM renditions`); !ok {
 		t.Error("renditions.verified_at NULL, mau terisi")
 	}
-	if got := queryString(t, env.store.Read(), `SELECT source_url FROM renditions`); !strings.HasSuffix(got, "/v360/index.m3u8") {
-		t.Errorf("renditions.source_url = %q, mau berakhir /v360/index.m3u8", got)
+	if got := queryString(t, env.store.Read(), `SELECT source_url FROM renditions`); !strings.HasSuffix(got, "/v540/index.m3u8") {
+		t.Errorf("renditions.source_url = %q, mau berakhir /v540/index.m3u8", got)
 	}
 
 	// Berkas di disk.
@@ -446,12 +446,12 @@ func TestIngestHappyPath(t *testing.T) {
 		t.Errorf("playlist lokal masih memuat URL absolut:\n%s", body)
 	}
 
-	// Varian besar tidak pernah diunduh.
-	if n := srv.hit("/v540/index.m3u8"); n != 0 {
-		t.Errorf("varian 540x960 diunduh %d kali, mau 0", n)
+	// Varian kecil tidak diunduh karena ada 540x960.
+	if n := srv.hit("/v540/index.m3u8"); n != 1 {
+		t.Errorf("varian 540x960 diunduh %d kali, mau 1", n)
 	}
-	if n := srv.hit("/v360/index.m3u8"); n != 1 {
-		t.Errorf("varian 640x360 diunduh %d kali, mau 1", n)
+	if n := srv.hit("/v360/index.m3u8"); n != 0 {
+		t.Errorf("varian 640x360 diunduh %d kali, mau 0", n)
 	}
 
 	// Run selesai beserta counter-nya.
@@ -575,7 +575,7 @@ func TestIngestMediaPathUsesProviderIDs(t *testing.T) {
 		t.Fatalf("sync_runs.status = %q, mau completed", got)
 	}
 
-	wantPlaylist := seriesPlaylistPath(testSeriesID, testEpisodeID, "360p")
+	wantPlaylist := seriesPlaylistPath(testSeriesID, testEpisodeID, "540p")
 	if got := queryString(t, env.store.Read(), `SELECT playlist_path FROM renditions`); got != wantPlaylist {
 		t.Errorf("renditions.playlist_path = %q, mau %q", got, wantPlaylist)
 	}
@@ -597,7 +597,7 @@ func TestIngestMediaPathUsesProviderIDs(t *testing.T) {
 
 	// Path langsung yang memakai UUID ada; path berbasis slug tidak dibuat.
 	mustExist(t, filepath.Join(genDir, "dramahits", "short", testSeriesID, posterFileName))
-	mustExist(t, filepath.Join(genDir, "dramahits", "short", testSeriesID, testEpisodeID, "360p", playlistFileName))
+	mustExist(t, filepath.Join(genDir, "dramahits", "short", testSeriesID, testEpisodeID, "540p", playlistFileName))
 	if _, err := os.Stat(filepath.Join(genDir, "dramahits", "short", testSeriesSlug)); !os.IsNotExist(err) {
 		t.Errorf("folder series %q ada, mau hanya UUID (err=%v)", testSeriesSlug, err)
 	}
@@ -689,13 +689,13 @@ SELECT r.playlist_path FROM renditions r
 			name:       "series dan episode tanpa ID",
 			externalID: "series-tanpa-id",
 			wantPoster: seriesPosterPath("series-tanpa-id"),
-			wantPlay:   seriesPlaylistPath("series-tanpa-id", "s01e01", "360p"),
+			wantPlay:   seriesPlaylistPath("series-tanpa-id", "s01e01", "540p"),
 		},
 		{
 			name:       "series ber-UUID, episode tanpa ID",
 			externalID: testSeriesSlug,
 			wantPoster: seriesPosterPath(testSeriesID),
-			wantPlay:   seriesPlaylistPath(testSeriesID, "s01e02", "360p"),
+			wantPlay:   seriesPlaylistPath(testSeriesID, "s01e02", "540p"),
 		},
 	}
 
@@ -960,8 +960,8 @@ func TestIngestRetiresPreviousGeneration(t *testing.T) {
 	if got := queryInt(t, env.store.Read(), `SELECT COUNT(*) FROM generations WHERE status = 'retired'`); got != 1 {
 		t.Errorf("jumlah generation retired = %d, mau 1", got)
 	}
-	mustExist(t, filepath.Join(env.root, "gen-000001", "dramahits", "short", testSeriesID, testEpisodeID, "360p", "index.m3u8"))
-	mustExist(t, filepath.Join(env.root, "gen-000002", "dramahits", "short", testSeriesID, testEpisodeID, "360p", "index.m3u8"))
+	mustExist(t, filepath.Join(env.root, "gen-000001", "dramahits", "short", testSeriesID, testEpisodeID, "540p", "index.m3u8"))
+	mustExist(t, filepath.Join(env.root, "gen-000002", "dramahits", "short", testSeriesID, testEpisodeID, "540p", "index.m3u8"))
 
 	// Tidak ada masa tenggang: generation retired dengan retired_at yang sudah
 	// sangat tua pun tetap dipertahankan pada run berikutnya.
@@ -985,7 +985,7 @@ func TestIngestRetiresPreviousGeneration(t *testing.T) {
 	if got := queryString(t, env.store.Read(), `SELECT status FROM generations WHERE label = 'gen-000001'`); got != "retired" {
 		t.Errorf("status gen-000001 = %q, mau retired", got)
 	}
-	mustExist(t, filepath.Join(env.root, "gen-000001", "dramahits", "short", testSeriesID, testEpisodeID, "360p", "index.m3u8"))
+	mustExist(t, filepath.Join(env.root, "gen-000001", "dramahits", "short", testSeriesID, testEpisodeID, "540p", "index.m3u8"))
 	if got := queryString(t, env.store.Read(), `SELECT label FROM generations WHERE status = 'active'`); got != "gen-000003" {
 		t.Errorf("generation aktif = %q, mau gen-000003", got)
 	}
@@ -1021,8 +1021,8 @@ func TestIngestFallsBackToIOSStream(t *testing.T) {
 	if got := waitRun(t, env.store, runID); got != "completed" {
 		t.Fatalf("sync_runs.status = %q, mau completed", got)
 	}
-	if got := queryString(t, env.store.Read(), `SELECT quality FROM renditions`); got != "360p" {
-		t.Errorf("renditions.quality = %q, mau 360p", got)
+	if got := queryString(t, env.store.Read(), `SELECT quality FROM renditions`); got != "540p" {
+		t.Errorf("renditions.quality = %q, mau 540p", got)
 	}
 	if n := srv.hit("/tidak-dipakai.m3u8"); n != 0 {
 		t.Errorf("stream web diunduh %d kali, mau 0", n)
@@ -1058,7 +1058,7 @@ func TestIngestDensgoMovie(t *testing.T) {
 	if got := queryInt(t, env.store.Read(), `SELECT COUNT(*) FROM playables WHERE episode_id IS NULL`); got != 1 {
 		t.Errorf("playables movie (episode_id NULL) = %d, mau 1", got)
 	}
-	if got := queryString(t, env.store.Read(), `SELECT playlist_path FROM renditions`); got != "densgo/movie/test-movie/360p/index.m3u8" {
+	if got := queryString(t, env.store.Read(), `SELECT playlist_path FROM renditions`); got != "densgo/movie/test-movie/540p/index.m3u8" {
 		t.Errorf("playlist_path = %q", got)
 	}
 	if got := queryString(t, env.store.Read(), `SELECT poster_path FROM titles`); got != "densgo/movie/test-movie/poster.jpg" {
@@ -1067,7 +1067,7 @@ func TestIngestDensgoMovie(t *testing.T) {
 	if got := queryString(t, env.store.Read(), `SELECT category FROM generation_items`); got != catalog.CategoryMovie {
 		t.Errorf("generation_items.category = %q, mau movie", got)
 	}
-	mustExist(t, filepath.Join(env.root, "gen-000001", "densgo", "movie", "test-movie", "360p", "index.m3u8"))
+	mustExist(t, filepath.Join(env.root, "gen-000001", "densgo", "movie", "test-movie", "540p", "index.m3u8"))
 }
 
 func TestIngestDensgoSeries(t *testing.T) {
@@ -1097,7 +1097,7 @@ func TestIngestDensgoSeries(t *testing.T) {
 		t.Fatalf("sync_runs.status = %q, mau completed", got)
 	}
 
-	want := "densgo/series/test-series/" + testEpisodeID + "/360p/index.m3u8"
+	want := "densgo/series/test-series/" + testEpisodeID + "/540p/index.m3u8"
 	if got := queryString(t, env.store.Read(), `SELECT playlist_path FROM renditions`); got != want {
 		t.Errorf("playlist_path = %q, mau %q", got, want)
 	}
@@ -1107,7 +1107,7 @@ func TestIngestDensgoSeries(t *testing.T) {
 	if got := queryInt(t, env.store.Read(), `SELECT COUNT(*) FROM playables WHERE episode_id IS NOT NULL`); got != 1 {
 		t.Errorf("playables episode = %d, mau 1", got)
 	}
-	mustExist(t, filepath.Join(env.root, "gen-000001", "densgo", "series", "test-series", testEpisodeID, "360p", "index.m3u8"))
+	mustExist(t, filepath.Join(env.root, "gen-000001", "densgo", "series", "test-series", testEpisodeID, "540p", "index.m3u8"))
 }
 
 // TestStartValidation memastikan selection kosong dan provider tanpa source
