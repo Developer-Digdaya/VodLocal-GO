@@ -227,6 +227,16 @@ func (s *server) handleProgressItem(w http.ResponseWriter, r *http.Request) {
 const progressSelect = `SELECT pp.playable_id, pp.position_seconds, pp.duration_seconds,
 		pp.completed, pp.updated_at,
 		t.id, t.title, t.poster_path,
+		COALESCE((
+			SELECT g.label
+			FROM playables pl2
+			JOIN renditions r2 ON r2.playable_id = pl2.id
+			JOIN generations g ON g.id = r2.generation_id
+			WHERE pl2.title_id = t.id AND r2.status = 'ready'
+			  AND g.status NOT IN ('building', 'failed')
+			ORDER BY g.created_at DESC, g.id DESC
+			LIMIT 1
+		), ''),
 		e.season_number, e.episode_number
 	FROM playback_progress pp
 	JOIN playables pl ON pl.id = pp.playable_id
@@ -240,19 +250,20 @@ func scanProgressItem(sc rowScanner) (progressItem, error) {
 		duration  sql.NullInt64
 		updated   sql.NullString
 		poster    sql.NullString
+		artLabel  string
 		season    sql.NullInt64
 		episode   sql.NullInt64
 		completed int
 	)
 	err := sc.Scan(&item.PlayableID, &item.PositionSeconds, &duration, &completed, &updated,
-		&item.TitleID, &item.Title, &poster, &season, &episode)
+		&item.TitleID, &item.Title, &poster, &artLabel, &season, &episode)
 	if err != nil {
 		return progressItem{}, err
 	}
 	item.DurationSeconds = nullInt64(duration)
 	item.Completed = completed == 1
 	item.UpdatedAt = isoTime(updated.String)
-	item.PosterURL = artworkURL(poster.String)
+	item.PosterURL = generationMediaURL(artLabel, poster.String)
 	if season.Valid && episode.Valid {
 		item.Episode = progressEpisode{SeasonNumber: season.Int64, EpisodeNumber: episode.Int64}
 	}

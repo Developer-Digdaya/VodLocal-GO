@@ -386,11 +386,14 @@ informasi monitoring.
 GET /api/v1/titles
   -> GET /api/v1/titles/{id}
   -> GET /api/v1/titles/{id}/episodes?season=1&page=1
-  -> pilih episode.playable_id
+  -> pilih episode dengan ready=true, lalu episode.playable_id
   -> GET /api/v1/playables/{playable_id}
   -> GET /api/v1/playables/{playable_id}/master.m3u8  (Bearer token)
   -> ExoPlayer memutar master tersebut
 ```
+
+Episode dengan `ready=false` tetap muncul di daftar, tetapi jangan langsung diputar;
+`GET /playables/{id}` akan membalas `409` · `3003` bila rendition belum siap.
 
 ### 9.3 Movie
 
