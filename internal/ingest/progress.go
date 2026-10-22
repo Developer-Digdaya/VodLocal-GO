@@ -46,6 +46,9 @@ type seriesProgress struct {
 	renditionsOK  int
 	renditionsBad int
 	bytes         int64
+
+	// lastReportedPercent mencegah UPDATE berlebihan saat callback per segmen.
+	lastReportedPercent int
 }
 
 // episodeResult merangkum hasil satu episode untuk pembukuan progres series.
@@ -143,11 +146,12 @@ UPDATE generation_items
 // (sudah dibatasi Config.MaxEpisodes) supaya progres bisa mencapai 100%.
 func (p *seriesProgress) setTotal(ctx context.Context, total int) {
 	p.total = total
+	p.lastReportedPercent = progressPercent(p.processed(), total)
 	p.exec(ctx, `
 UPDATE generation_items
    SET total_episodes = ?, current_step = ?, progress_percent = ?, updated_at = ?
  WHERE generation_id = ? AND provider_id = ? AND series_external_id = ?`,
-		total, stepDownload, progressPercent(p.processed(), total), p.svc.stamp(),
+		total, stepDownload, p.lastReportedPercent, p.svc.stamp(),
 		p.genID, p.provID, p.external)
 }
 
@@ -162,7 +166,8 @@ UPDATE generation_items
 }
 
 // episodeDone menambahkan hasil satu episode ke counter lalu menulis satu baris
-// pembaruan. Tidak ada penulisan per segmen: satu UPDATE per episode.
+// pembaruan. Progres di tengah episode sudah dilaporkan terpisah oleh
+// segmentProgress.
 func (p *seriesProgress) episodeDone(ctx context.Context, res episodeResult) {
 	switch {
 	case res.attempted && res.ready:
@@ -177,6 +182,7 @@ func (p *seriesProgress) episodeDone(ctx context.Context, res episodeResult) {
 		p.failed++
 	}
 	p.bytes += res.bytes
+	p.lastReportedPercent = progressPercent(p.processed(), p.total)
 
 	p.exec(ctx, `
 UPDATE generation_items
@@ -184,13 +190,54 @@ UPDATE generation_items
        bytes_downloaded = ?, progress_percent = ?, current_step = ?, updated_at = ?
  WHERE generation_id = ? AND provider_id = ? AND series_external_id = ?`,
 		p.done, p.failed, p.renditionsOK, p.renditionsBad, p.bytes,
-		progressPercent(p.processed(), p.total), stepDownload, p.svc.stamp(),
+		p.lastReportedPercent, stepDownload, p.svc.stamp(),
 		p.genID, p.provID, p.external)
+}
+
+// segmentProgress melaporkan progres di dalam satu episode yang masih
+// berjalan. Untuk movie (total episode 1) ini yang membuat progress bar tidak
+// tertahan di 0 sampai unduhan selesai. Update hanya dilakukan jika persentase
+// berubah, sehingga callback per segmen tidak membanjiri database.
+func (p *seriesProgress) segmentProgress(ctx context.Context, done, total int, bytes int64) {
+	if p == nil || total < 1 {
+		return
+	}
+	percent := p.downloadPercent(done, total)
+	if percent <= p.lastReportedPercent {
+		return
+	}
+	p.lastReportedPercent = percent
+	p.exec(ctx, `
+UPDATE generation_items
+   SET progress_percent = ?, bytes_downloaded = ?, current_step = ?, updated_at = ?
+ WHERE generation_id = ? AND provider_id = ? AND series_external_id = ?`,
+		percent, p.bytes+bytes, stepSegments, p.svc.stamp(),
+		p.genID, p.provID, p.external)
+}
+
+// downloadPercent menghitung persentase gabungan episode selesai + fraksi
+// episode yang sedang diunduh. Nilai 100 ditahan di 99 sampai episode benar-
+// benar selesai.
+func (p *seriesProgress) downloadPercent(done, total int) int {
+	episodes := p.total
+	if episodes < 1 {
+		episodes = 1
+	}
+	fraction := float64(done) / float64(total)
+	percent := int(((float64(p.processed()) + fraction) * 100) / float64(episodes))
+	if percent > 99 {
+		return 99
+	}
+	if percent < 0 {
+		return 0
+	}
+	return percent
 }
 
 // finish menutup series yang berhasil: status 'done' dan progres 100%.
 func (p *seriesProgress) finish(ctx context.Context) {
 	now := p.svc.stamp()
+	p.lastReportedPercent = 100
 	p.exec(ctx, `
 UPDATE generation_items
    SET status = ?, progress_percent = 100, current_step = ?, episodes_done = ?,

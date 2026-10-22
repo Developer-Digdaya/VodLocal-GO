@@ -108,6 +108,47 @@ func TestDownloadAll(t *testing.T) {
 	assertNoFilesWithSuffix(t, dir, PartSuffix)
 }
 
+func TestDownloadWithProgress(t *testing.T) {
+	const count = 5
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, testBody(r.URL.Path))
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	jobs := testJobs(srv.URL, dir, count, true)
+
+	var (
+		calls []int
+		last  = -1
+		lastB int64
+		total int
+	)
+	res, err := New(Options{MaxParallel: 2, Retries: 0}).DownloadWithProgress(
+		context.Background(), jobs,
+		func(done, all int, bytes int64) {
+			calls = append(calls, done)
+			last, lastB, total = done, bytes, all
+		},
+	)
+	if err != nil {
+		t.Fatalf("DownloadWithProgress() error = %v", err)
+	}
+	if len(calls) != count {
+		t.Fatalf("callback dipanggil %d kali, mau %d", len(calls), count)
+	}
+	for i, done := range calls {
+		if done != i+1 {
+			t.Fatalf("callback done = %d pada panggilan %d, mau %d", done, i+1, i+1)
+		}
+	}
+	if last != count || total != count || lastB != res.Bytes {
+		t.Fatalf("callback terakhir = done %d/total %d/bytes %d, mau %d/%d/%d",
+			last, total, lastB, count, count, res.Bytes)
+	}
+}
+
 func TestDownloadSkipsExisting(t *testing.T) {
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

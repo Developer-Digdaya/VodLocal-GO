@@ -174,6 +174,17 @@ type outcome struct {
 // started yet fail immediately with the context error, so Download always
 // reports on every job it was given.
 func (d *Downloader) Download(ctx context.Context, jobs []Job) (Result, error) {
+	return d.download(ctx, jobs, nil)
+}
+
+// DownloadWithProgress sama seperti Download, tetapi memanggil onProgress
+// setiap satu job selesai (berhasil, skip, atau gagal). done adalah jumlah job
+// yang sudah dilaporkan dan bytes adalah byte sukses kumulatif.
+func (d *Downloader) DownloadWithProgress(ctx context.Context, jobs []Job, onProgress func(done, total int, bytes int64)) (Result, error) {
+	return d.download(ctx, jobs, onProgress)
+}
+
+func (d *Downloader) download(ctx context.Context, jobs []Job, onProgress func(done, total int, bytes int64)) (Result, error) {
 	result := Result{Total: len(jobs)}
 	if len(jobs) == 0 {
 		return result, nil
@@ -204,9 +215,16 @@ func (d *Downloader) Download(ctx context.Context, jobs []Job) (Result, error) {
 		jobCh <- job
 	}
 	close(jobCh)
-	wg.Wait()
-	close(outCh)
 
+	// Consume hasil sambil worker berjalan supaya callback progres tidak
+	// menunggu seluruh unduhan selesai.
+	go func() {
+		wg.Wait()
+		close(outCh)
+	}()
+
+	reported := 0
+	var reportedBytes int64
 	for out := range outCh {
 		switch {
 		case out.skipped:
@@ -217,6 +235,11 @@ func (d *Downloader) Download(ctx context.Context, jobs []Job) (Result, error) {
 		default:
 			result.Done++
 			result.Bytes += out.n
+			reportedBytes += out.n
+		}
+		reported++
+		if onProgress != nil {
+			onProgress(reported, len(jobs), reportedBytes)
 		}
 	}
 

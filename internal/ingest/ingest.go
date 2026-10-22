@@ -906,11 +906,17 @@ func (s *Service) buildRendition(ctx context.Context, st *runState, provider, ca
 	}
 
 	if len(jobs) > 0 {
-		// Tahap unduhan segmen; satu-satunya penanda progres di dalam
-		// buildRendition supaya tidak ada UPDATE per segmen.
+		// Tahap unduhan segmen; progres per segmen dilaporkan lewat callback
+		// downloader dan di-throttle oleh seriesProgress.
 		s.itemStep(ctx, st, stepSegments)
 
-		res, dlErr := s.dl.Download(ctx, jobs)
+		var onProgress func(done, total int, bytes int64)
+		if st.item != nil {
+			onProgress = func(done, total int, bytes int64) {
+				st.item.segmentProgress(ctx, done, total, bytes)
+			}
+		}
+		res, dlErr := s.dl.DownloadWithProgress(ctx, jobs, onProgress)
 		st.bytes += res.Bytes
 		rec.bytesDone = res.Bytes
 		if dlErr != nil {

@@ -384,6 +384,30 @@ func TestGenerationItemWritesNeverFailRun(t *testing.T) {
 	}
 }
 
+// TestDownloadPercent memastikan progres di dalam episode dihitung dari
+// fraksi segmen dan tidak mencapai 100 sebelum episode benar-benar selesai.
+func TestDownloadPercent(t *testing.T) {
+	movie := &seriesProgress{total: 1}
+	if got := movie.downloadPercent(0, 100); got != 0 {
+		t.Errorf("movie 0/100 = %d, mau 0", got)
+	}
+	if got := movie.downloadPercent(50, 100); got != 50 {
+		t.Errorf("movie 50/100 = %d, mau 50", got)
+	}
+	if got := movie.downloadPercent(100, 100); got != 99 {
+		t.Errorf("movie 100/100 = %d, mau 99 (belum final)", got)
+	}
+
+	series := &seriesProgress{total: 2}
+	if got := series.downloadPercent(50, 100); got != 25 {
+		t.Errorf("series episode 1 50/100 = %d, mau 25", got)
+	}
+	series.done = 1
+	if got := series.downloadPercent(50, 100); got != 75 {
+		t.Errorf("series episode 2 50/100 = %d, mau 75", got)
+	}
+}
+
 // TestProgressPercent memastikan persentase dijepit ke 0..100 dan tidak pernah
 // membagi dengan nol.
 func TestProgressPercent(t *testing.T) {
