@@ -39,7 +39,7 @@ kehilangan koneksi internet.
 | Runtime | Go 1.27 + `net/http` + `chi` |
 | Database | SQLite (WAL, `modernc.org/sqlite`, pure Go) |
 | Media | HLS (`.m3u8` + `.ts`) disimpan lokal |
-| Panel admin | HTML server-rendered + htmx (tanpa CDN) |
+| Panel admin | HTML server-rendered + Pico CSS v2.1.1 (vendored, tanpa CDN) |
 | Autentikasi | Bearer token per tablet, session admin + CSRF |
 | Deploy | Satu binary + systemd |
 | Target | 100 tablet, ±100 jam konten, LAN bus |
@@ -236,6 +236,11 @@ Semua konfigurasi memakai environment dengan prefix `VODLOCAL_`. Contoh lengkap 
 ---
 
 ## 7. Panel Admin
+
+Panel memakai Pico CSS v2.1.1 sebagai base style. Asetnya di-vendor di
+`internal/admin/assets/` dan di-embed ke binary, sehingga tidak ada request CDN
+dan tetap berfungsi saat bus offline. Komponen khusus (modal List Content, tabs,
+pager, badge, filter, dan tabel scroll) tetap memakai CSS panel.
 
 Akun admin dibuat otomatis saat boot **hanya jika** `VODLOCAL_ADMIN_USER` dan
 `VODLOCAL_ADMIN_PASSWORD` diisi serta tabel `auth_users` masih kosong.
@@ -589,7 +594,7 @@ internal/mediafs/    layout generasi & atomic switch
 internal/httpserver/ router, auth, media, health
 internal/api/        handler katalog & playback
 internal/syncjob/    orkestrasi sync legacy
-internal/admin/      panel admin HTML
+internal/admin/      panel admin HTML + Pico CSS
 internal/scheduler/  penjadwal sync berbasis cron
 internal/loadgen/    mesin uji beban
 internal/notify/     webhook & Telegram

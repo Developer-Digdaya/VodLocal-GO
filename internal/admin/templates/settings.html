@@ -3,11 +3,13 @@
 
 <form class="card" method="post" action="/settings">
   <input type="hidden" name="_csrf" value="{{.CSRF}}">
-  <div class="grid">
+  <fieldset>
+  <legend>Konfigurasi</legend>
+  <div class="card-grid settings-grid">
     {{range .Fields}}
     <div>
       {{if eq .Kind "bool"}}
-        <label><input type="checkbox" name="{{.Key}}" value="1"{{if .Checked}} checked{{end}}> {{.Label}}</label>
+        <label><input type="checkbox" role="switch" name="{{.Key}}" value="1"{{if .Checked}} checked{{end}}> {{.Label}}</label>
       {{else}}
         <label for="{{.Key}}">{{.Label}}</label>
         <input class="full" id="{{.Key}}" name="{{.Key}}" value="{{.Value}}"{{if eq .Kind "int"}} type="number"{{else}} type="text"{{end}}>
@@ -17,6 +19,7 @@
     </div>
     {{end}}
   </div>
+  </fieldset>
   <p><button type="submit">Simpan pengaturan</button></p>
 </form>
 {{end}}

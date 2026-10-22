@@ -42,9 +42,9 @@
 
 {{if .Devices}}
 <div class="table-wrap">
-  <table>
+  <table class="striped">
     <thead>
-      <tr><th>ID</th><th>Nama</th><th>Kursi</th><th>MAC</th><th>IP</th><th>Status</th><th>Terakhir terlihat</th><th>Aksi</th></tr>
+      <tr><th scope="col">ID</th><th scope="col">Nama</th><th scope="col">Kursi</th><th scope="col">MAC</th><th scope="col">IP</th><th scope="col">Status</th><th scope="col">Terakhir terlihat</th><th scope="col">Aksi</th></tr>
     </thead>
     <tbody>
     {{range .Devices}}
@@ -79,9 +79,9 @@
   </table>
 </div>
 
-<div class="pager" aria-label="Pagination perangkat">
+<div class="pager" role="navigation" aria-label="Pagination perangkat">
   {{if .HasPrev}}<a href="?q={{urlquery .Q}}&amp;status={{urlquery .Status}}&amp;sort={{urlquery .Sort}}&amp;per_page={{.PerPage}}&amp;page={{.PrevPage}}">« sebelumnya</a>{{else}}<span class="muted small">« sebelumnya</span>{{end}}
-  <span class="page-info">halaman {{.Page}} / {{if .TotalPages}}{{.TotalPages}}{{else}}1{{end}}</span>
+  <span class="page-info" aria-current="page">halaman {{.Page}} / {{if .TotalPages}}{{.TotalPages}}{{else}}1{{end}}</span>
   {{if .HasNext}}<a href="?q={{urlquery .Q}}&amp;status={{urlquery .Status}}&amp;sort={{urlquery .Sort}}&amp;per_page={{.PerPage}}&amp;page={{.NextPage}}">berikutnya »</a>{{else}}<span class="muted small">berikutnya »</span>{{end}}
 </div>
 {{else}}

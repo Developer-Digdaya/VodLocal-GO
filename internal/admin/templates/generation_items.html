@@ -11,17 +11,17 @@
     {{end}}
   </p>
   <div class="table-wrap">
-    <table>
+    <table class="striped">
       <thead>
         <tr>
-          <th>Series</th>
-          <th>Kategori</th>
-          <th>Status</th>
-          <th>Episode</th>
-          <th>Rendition</th>
-          <th>Progres</th>
-          <th>Langkah</th>
-          <th>Error</th>
+          <th scope="col">Series</th>
+          <th scope="col">Kategori</th>
+          <th scope="col">Status</th>
+          <th scope="col">Episode</th>
+          <th scope="col">Rendition</th>
+          <th scope="col">Progres</th>
+          <th scope="col">Langkah</th>
+          <th scope="col">Error</th>
         </tr>
       </thead>
       <tbody>
@@ -57,13 +57,13 @@
   </div>
 
   {{if gt .TotalPages 1}}
-  <div class="pager" aria-label="Pagination konten sinkronisasi">
+  <div class="pager" role="navigation" aria-label="Pagination konten sinkronisasi">
     {{if .HasPrev}}
     <a href="/sync/{{.RunID}}?page={{.PrevPage}}&amp;per_page={{.PerPage}}">‹ Sebelumnya</a>
     {{else}}
     <span class="muted small">‹ Sebelumnya</span>
     {{end}}
-    <span class="page-info">Halaman {{.Page}} / {{.TotalPages}}</span>
+    <span class="page-info" aria-current="page">Halaman {{.Page}} / {{.TotalPages}}</span>
     {{if .HasNext}}
     <a href="/sync/{{.RunID}}?page={{.NextPage}}&amp;per_page={{.PerPage}}">Berikutnya ›</a>
     {{else}}

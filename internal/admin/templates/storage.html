@@ -51,17 +51,17 @@
 
 {{if .Items}}
 <div class="table-wrap">
-  <table>
+  <table class="striped">
     <thead>
       <tr>
-        <th>Judul</th>
-        <th>Kategori</th>
-        <th>Generation</th>
-        <th>Status</th>
-        <th>Episode</th>
-        <th>Progres</th>
-        <th>Ukuran</th>
-        <th>Aksi</th>
+        <th scope="col">Judul</th>
+        <th scope="col">Kategori</th>
+        <th scope="col">Generation</th>
+        <th scope="col">Status</th>
+        <th scope="col">Episode</th>
+        <th scope="col">Progres</th>
+        <th scope="col">Ukuran</th>
+        <th scope="col">Aksi</th>
       </tr>
     </thead>
     <tbody>
@@ -105,13 +105,13 @@
 </div>
 
 {{if gt .TotalPages 1}}
-<div class="pager" aria-label="Pagination konten">
+<div class="pager" role="navigation" aria-label="Pagination konten">
   {{if .HasPrev}}
   <a href="?q={{urlquery .Q}}&amp;category={{urlquery .Category}}&amp;status={{urlquery .Status}}&amp;per_page={{.PerPage}}&amp;page={{.PrevPage}}&amp;gen_page={{.GenPageInfo.Page}}&amp;gen_per_page={{.GenPageInfo.PerPage}}">‹ Sebelumnya</a>
   {{else}}
   <span class="muted small">‹ Sebelumnya</span>
   {{end}}
-  <span class="page-info">Halaman {{.Page}} / {{.TotalPages}}</span>
+  <span class="page-info" aria-current="page">Halaman {{.Page}} / {{.TotalPages}}</span>
   {{if .HasNext}}
   <a href="?q={{urlquery .Q}}&amp;category={{urlquery .Category}}&amp;status={{urlquery .Status}}&amp;per_page={{.PerPage}}&amp;page={{.NextPage}}&amp;gen_page={{.GenPageInfo.Page}}&amp;gen_per_page={{.GenPageInfo.PerPage}}">Berikutnya ›</a>
   {{else}}
@@ -144,9 +144,9 @@
 </p>
 <p class="muted small">Menampilkan {{.GenPageInfo.From}}–{{.GenPageInfo.To}} dari {{.GenPageInfo.Total}} generation.</p>
 <div class="table-wrap">
-  <table>
+  <table class="striped">
     <thead>
-      <tr><th>Label</th><th>Status</th><th>Ukuran</th><th>Berkas</th><th>Dibuat</th><th>Retired</th></tr>
+      <tr><th scope="col">Label</th><th scope="col">Status</th><th scope="col">Ukuran</th><th scope="col">Berkas</th><th scope="col">Dibuat</th><th scope="col">Retired</th></tr>
     </thead>
     <tbody>
     {{range .Generations}}
@@ -164,13 +164,13 @@
 </div>
 
 {{if gt .GenPageInfo.TotalPages 1}}
-<div class="pager" aria-label="Pagination generation">
+<div class="pager" role="navigation" aria-label="Pagination generation">
   {{if .GenPageInfo.HasPrev}}
   <a href="?q={{urlquery .Q}}&amp;category={{urlquery .Category}}&amp;status={{urlquery .Status}}&amp;per_page={{.PerPage}}&amp;page={{.Page}}&amp;gen_page={{.GenPageInfo.PrevPage}}&amp;gen_per_page={{.GenPageInfo.PerPage}}">‹ Sebelumnya</a>
   {{else}}
   <span class="muted small">‹ Sebelumnya</span>
   {{end}}
-  <span class="page-info">Halaman {{.GenPageInfo.Page}} / {{.GenPageInfo.TotalPages}}</span>
+  <span class="page-info" aria-current="page">Halaman {{.GenPageInfo.Page}} / {{.GenPageInfo.TotalPages}}</span>
   {{if .GenPageInfo.HasNext}}
   <a href="?q={{urlquery .Q}}&amp;category={{urlquery .Category}}&amp;status={{urlquery .Status}}&amp;per_page={{.PerPage}}&amp;page={{.Page}}&amp;gen_page={{.GenPageInfo.NextPage}}&amp;gen_per_page={{.GenPageInfo.PerPage}}">Berikutnya ›</a>
   {{else}}
