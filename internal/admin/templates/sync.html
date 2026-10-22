@@ -188,14 +188,13 @@
     listElement.appendChild(message);
   }
 
-  // episodeLabel menampilkan keterangan singkat di bawah judul. Daftar film
-  // Densgo tidak menyebut jumlah episode, jadi kategori movie memakai "Film".
+  // episodeLabel hanya menampilkan label yang memang tersedia di respons API.
+  // Daftar series/short tidak membawa jumlah episode yang dapat dipercaya,
+  // jadi jangan menampilkan angka episode di kartu.
   function episodeLabel(item) {
     var category = item.category || currentCategory;
     if (category === 'movie') { return 'Film'; }
-    var count = item.episode_count || 0;
-    if (!count) { return '0 episode'; }
-    return count + ' episode';
+    return '';
   }
 
   // alreadyAdded melaporkan apakah server menandai konten ini sudah ada di
@@ -263,10 +262,13 @@
       title.textContent = item.title || item.slug;
       info.appendChild(title);
 
-      var meta = document.createElement('span');
-      meta.className = 'small muted';
-      meta.textContent = episodeLabel(item);
-      info.appendChild(meta);
+      var metaText = episodeLabel(item);
+      if (metaText) {
+        var meta = document.createElement('span');
+        meta.className = 'small muted';
+        meta.textContent = metaText;
+        info.appendChild(meta);
+      }
 
       // Badge penanda konten yang sudah ada di database.
       if (added) {

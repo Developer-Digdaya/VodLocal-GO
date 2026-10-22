@@ -32,7 +32,6 @@ type storageStats struct {
 // dashboardData adalah data halaman dashboard.
 type dashboardData struct {
 	base
-	Generation       *generationView
 	Catalog          catalogStats
 	Devices          deviceStats
 	Storage          storageStats
@@ -44,12 +43,6 @@ type dashboardData struct {
 // handleDashboard melayani GET /.
 func (a *Admin) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	generation, err := a.activeGenerationView(ctx)
-	if err != nil {
-		a.internalError(w, r, err, "Gagal membaca versi media aktif.")
-		return
-	}
 
 	catalog, err := a.catalogStats(ctx)
 	if err != nil {
@@ -83,7 +76,6 @@ func (a *Admin) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	data := dashboardData{
 		base:       a.base(w, r, "Dashboard", "dashboard"),
-		Generation: generation,
 		Catalog:    catalog,
 		Devices:    devices,
 		Storage:    storage,

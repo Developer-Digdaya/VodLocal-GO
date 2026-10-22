@@ -146,8 +146,8 @@ func TestDashboardRequiresSession(t *testing.T) {
 	}
 }
 
-// TestDashboard memastikan dashboard menampilkan generation aktif beserta
-// statistiknya.
+// TestDashboard memastikan dashboard menampilkan statistik katalog tanpa
+// section ringkasan batch media.
 func TestDashboard(t *testing.T) {
 	f := newFixture(t)
 	f.login()
@@ -165,13 +165,17 @@ func TestDashboard(t *testing.T) {
 
 	body := rec.Body.String()
 	for _, want := range []string{
-		"gen-000042",     // label generation aktif
 		"Rendition siap", // ringkasan rendition siap
 		"Katalog",        // bagian katalog
 		"Sinkronisasi terakhir",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("dashboard tidak memuat %q", want)
+		}
+	}
+	for _, unwanted := range []string{"Batch media terbaru", "gen-000042"} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("dashboard masih memuat section batch %q", unwanted)
 		}
 	}
 }

@@ -14,22 +14,6 @@
 </p>
 {{end}}
 
-<h2>Batch media terbaru</h2>
-<p class="small"><a href="/storage">kelola storage</a> · <a href="/sync">riwayat sinkronisasi</a></p>
-{{if .Generation}}
-<div class="table-wrap">
-  <table class="detail-table">
-    <tr><th>Label</th><td><code>{{.Generation.Label}}</code></td></tr>
-    <tr><th>Status batch</th><td>{{.Generation.StatusLabel}}</td></tr>
-    <tr><th>Ukuran</th><td>{{bytes .Generation.TotalBytes}} <span class="muted small">({{.Generation.TotalBytes}} byte)</span></td></tr>
-    <tr><th>Jumlah berkas</th><td>{{.Generation.FileCount}}</td></tr>
-    <tr><th>Dibuat</th><td>{{when .Generation.CreatedAt}}</td></tr>
-  </table>
-</div>
-{{else}}
-<p class="flash error">Belum ada batch aktif. Unduhan lama yang masih tersimpan tetap bisa diputar.</p>
-{{end}}
-
 <h2>Katalog</h2>
 <div class="card-grid">
   <article class="card"><div class="muted small">Judul</div><div>{{.Catalog.Titles}}</div></article>
