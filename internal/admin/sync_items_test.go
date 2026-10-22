@@ -119,6 +119,38 @@ type generationItemsEnvelope struct {
 	} `json:"data"`
 }
 
+// TestSyncStatusActiveUsesGenerationProgress memastikan progress bar atas
+// memakai progres per segmen dari generation_items selama run aktif, bukan
+// counter sync_runs yang baru diisi di akhir.
+func TestSyncStatusActiveUsesGenerationProgress(t *testing.T) {
+	f := newFixture(t)
+	f.login()
+	seedTwoGenerationItems(f)
+	f.exec(`UPDATE sync_runs SET status = 'running',
+	        total_renditions = 0, renditions_ready = 0 WHERE id = 1`)
+
+	rec := f.do(http.MethodGet, "/sync/1/status", nil, "application/json")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, mau 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Data struct {
+			ProgressPercent int   `json:"progress_percent"`
+			BytesDownloaded int64 `json:"bytes_downloaded"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body bukan JSON: %v", err)
+	}
+	if body.Data.ProgressPercent != 75 {
+		t.Fatalf("progress = %d, mau 75 (rata-rata 100 dan 50)", body.Data.ProgressPercent)
+	}
+	if body.Data.BytesDownloaded != 1572864 {
+		t.Fatalf("bytes = %d, mau 1572864", body.Data.BytesDownloaded)
+	}
+}
+
 // TestSyncDetailGenerationItems memastikan halaman /sync/{id} menampilkan tabel
 // progres per series beserta ringkasannya.
 func TestSyncDetailGenerationItems(t *testing.T) {

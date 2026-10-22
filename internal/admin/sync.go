@@ -219,7 +219,9 @@ type syncStatusView struct {
 }
 
 // syncStatusView menghitung payload status (progress, elapsed, ETA) dari run.
-func (a *Admin) syncStatusView(run *syncRunView) syncStatusView {
+// Selama run aktif, progres diambil dari generation_items supaya unduhan per
+// segmen terlihat; counter sync_runs baru terisi saat run ditutup.
+func (a *Admin) syncStatusView(ctx context.Context, run *syncRunView) syncStatusView {
 	payload := syncStatusPayload{
 		ID:               run.ID,
 		Status:           run.Status,
@@ -229,6 +231,16 @@ func (a *Admin) syncStatusView(run *syncRunView) syncStatusView {
 		RenditionsReady:  run.RenditionsReady,
 		RenditionsFailed: run.RenditionsFailed,
 		BytesDownloaded:  run.BytesDownloaded,
+	}
+
+	if run.Active && run.GenerationID.Valid {
+		if percent, bytes, err := a.generationProgress(ctx, run.GenerationID.Int64); err == nil {
+			payload.ProgressPercent = percent
+			payload.BytesDownloaded = bytes
+		} else {
+			a.log.Warn("admin: gagal membaca progres generation aktif",
+				"run_id", run.ID, "generation_id", run.GenerationID.Int64, "err", err)
+		}
 	}
 
 	if start, ok := parseTime(run.StartedAt); ok {
@@ -248,6 +260,20 @@ func (a *Admin) syncStatusView(run *syncRunView) syncStatusView {
 	}
 
 	return syncStatusView{Payload: payload, Active: run.Active}
+}
+
+// generationProgress menghitung rata-rata progres dan total byte seluruh
+// item pada satu generation. Dipakai status run aktif yang belum punya counter
+// akhir di sync_runs.
+func (a *Admin) generationProgress(ctx context.Context, generationID int64) (int, int64, error) {
+	var percent int
+	var bytes int64
+	err := a.read.QueryRowContext(ctx, `
+SELECT CAST(COALESCE(AVG(progress_percent), 0) AS INTEGER),
+       COALESCE(SUM(bytes_downloaded), 0)
+  FROM generation_items
+ WHERE generation_id = ?`, generationID).Scan(&percent, &bytes)
+	return percent, bytes, err
 }
 
 // generationItemRow adalah satu baris generation_items: progres ingest satu
@@ -617,7 +643,7 @@ func (a *Admin) handleSyncDetail(w http.ResponseWriter, r *http.Request) {
 	a.renderPage(w, r, "sync_detail", syncDetailData{
 		base:       a.base(w, r, fmt.Sprintf("Sync #%d", run.ID), "sync"),
 		Run:        run,
-		StatusView: a.syncStatusView(run),
+		StatusView: a.syncStatusView(ctx, run),
 		ItemsView:  itemsView,
 	}, http.StatusOK)
 }
@@ -646,7 +672,7 @@ func (a *Admin) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	view := a.syncStatusView(run)
+	view := a.syncStatusView(ctx, run)
 
 	if wantsJSON(r) {
 		if run.terminal() && run.RenditionsFailed > 0 {

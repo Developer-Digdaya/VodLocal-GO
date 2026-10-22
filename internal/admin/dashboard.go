@@ -83,7 +83,7 @@ func (a *Admin) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		ActiveSync: activeSync,
 	}
 	if activeSync != nil {
-		data.ActiveSyncStatus = a.syncStatusView(activeSync)
+		data.ActiveSyncStatus = a.syncStatusView(ctx, activeSync)
 	}
 	a.renderPage(w, r, "dashboard", data, http.StatusOK)
 }
