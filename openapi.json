@@ -1,7 +1,7 @@
 {
-  "openapi": "3.0.3",
+  "openapi": "3.0.0",
   "info": {
-    "title": "VodLocal — API Hiburan Bus",
+    "title": "VodLocal - API Hiburan Bus",
     "version": "1.0.0",
     "description": "API server hiburan lokal bus.\n\n**Envelope response**\n\nSemua endpoint JSON memakai bentuk:\n\n```json\n{\"code\":0,\"msg\":\"Berhasil\",\"data\":{},\"errors\":[]}\n```\n\n- `code = 0` sukses, `1` sukses sebagian, `>= 1000` error.\n- `errors` selalu array (tidak pernah `null`).\n- `data` selalu ada; bernilai `null` saat error.\n\n**Autentikasi**\n\n- API tablet: header `Authorization: Bearer <token>` (token dari `POST /api/v1/devices/register`).\n- Panel admin: cookie sesi `mc_session` + field `_csrf` pada POST form.\n- Media `/media/*` dan `/artwork/*` tidak memakai auth (LAN bus terisolasi).\n\n**Waktu**\n\nSemua timestamp di API memakai ISO-8601 UTC. Panel admin menampilkan WIB (UTC+7).\n\n**Kode error**\n\nRegistry lengkap ada di `docs/standar-response.md`. Contoh yang sering dipakai:\n`1003` validasi, `2000` tanpa token, `2004` device nonaktif, `3000` judul tidak ada,\n`3003` media belum siap, `4001` sync sedang berjalan, `4009` belum ada generation aktif,\n`8000` progress tidak ada."
   },
@@ -12,7 +12,7 @@
     },
     {
       "url": "http://192.0.2.10",
-      "description": "Server produksi — ganti 192.0.2.10 dengan IP server"
+      "description": "Server produksi - ganti 192.0.2.10 dengan IP server"
     }
   ],
   "tags": [
@@ -1255,7 +1255,7 @@
         "properties": {
           "code": { "type": "integer", "example": 3000 },
           "msg": { "type": "string", "example": "Judul tidak ditemukan" },
-          "data": { "type": "object", "nullable": true, "example": null },
+          "data": { "description": "null saat error" },
           "errors": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/Detail" },
@@ -1277,7 +1277,7 @@
           { "$ref": "#/components/schemas/SuccessEnvelope" },
           {
             "type": "object",
-            "properties": { "data": { "type": "object", "nullable": true, "example": null } }
+            "properties": { "data": { "description": "null saat error" } }
           }
         ]
       },
