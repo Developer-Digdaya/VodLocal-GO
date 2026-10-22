@@ -25,7 +25,6 @@ import (
 	"vodlocal/internal/ingest"
 	"vodlocal/internal/mediafs"
 	"vodlocal/internal/notify"
-	"vodlocal/internal/scheduler"
 	"vodlocal/internal/store"
 	"vodlocal/internal/syncjob"
 )
@@ -142,22 +141,6 @@ func run() error {
 	} else if deleted > 0 {
 		logger.Info("baris katalog tanpa media dihapus saat boot", "rows", deleted)
 	}
-
-	sched, err := scheduler.New(scheduler.Config{
-		Store:    st,
-		Syncer:   syncer,
-		Logger:   logger,
-		Now:      time.Now,
-		Location: time.Local,
-	})
-	if err != nil {
-		return err
-	}
-	go func() {
-		if err := sched.Run(ctx); err != nil {
-			logger.Error("scheduler berhenti", "err", err)
-		}
-	}()
 
 	sessions := httpserver.NewSessionManager([]byte(cfg.SessionSecret), 12*time.Hour)
 	deviceAuth := api.NewAuthenticator(st.Write(), time.Now)

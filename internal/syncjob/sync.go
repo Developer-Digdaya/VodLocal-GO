@@ -48,6 +48,7 @@ import (
 	"sync"
 	"time"
 
+	"vodlocal/internal/appsettings"
 	"vodlocal/internal/download"
 	"vodlocal/internal/hls"
 	"vodlocal/internal/mediafs"
@@ -286,16 +287,17 @@ func (s *Syncer) Run(ctx context.Context, trigger string) (Result, error) {
 	}()
 
 	st := &runState{
-		id:    runID,
-		genID: genID,
-		label: label,
-		build: build,
-		dir:   build.Dir(),
-		phase: "discovery",
-		res:   res,
+		id:           runID,
+		genID:        genID,
+		label:        label,
+		build:        build,
+		dir:          build.Dir(),
+		phase:        "discovery",
+		res:          res,
+		maxShortSide: appsettings.MaxShortSide(runCtx, s.store.Read()),
 	}
 
-	s.log.Info("sync dimulai", "run_id", runID, "generation", label, "trigger", source, "providers", len(s.providers))
+	s.log.Info("sync dimulai", "run_id", runID, "generation", label, "trigger", source, "providers", len(s.providers), "max_short_side", st.maxShortSide)
 
 	return s.execute(runCtx, st)
 }
@@ -506,19 +508,20 @@ func (s *Syncer) sendNotification(ctx context.Context, ev notify.Event) (err err
 
 // runState adalah keadaan satu run selama berjalan.
 type runState struct {
-	id      int64
-	genID   int64
-	label   string
-	build   *mediafs.Build
-	dir     string
-	phase   string
-	res     Result
-	bytes   int64
-	rends   []*renditionRecord
-	subs    []subtitleTask
-	arts    []artworkTask
-	fileCnt int
-	total   int64
+	id           int64
+	genID        int64
+	label        string
+	build        *mediafs.Build
+	dir          string
+	phase        string
+	res          Result
+	bytes        int64
+	rends        []*renditionRecord
+	subs         []subtitleTask
+	maxShortSide int
+	arts         []artworkTask
+	fileCnt      int
+	total        int64
 }
 
 // renditionRecord menampung satu baris renditions beserta path tujuannya.
@@ -900,7 +903,7 @@ func (s *Syncer) fetchRenditions(ctx context.Context, dbCtx context.Context, st 
 // fetchRendition mengambil satu playlist, menulis versi lokalnya, lalu
 // mengunduh seluruh aset yang dirujuknya.
 func (s *Syncer) fetchRendition(ctx context.Context, st *runState, rec *renditionRecord) error {
-	pl, finalURL, err := s.fetchPlaylist(ctx, rec.playlistURL)
+	pl, finalURL, err := s.fetchPlaylist(ctx, rec.playlistURL, st.maxShortSide)
 	if err != nil {
 		return err
 	}
@@ -965,8 +968,9 @@ func (s *Syncer) fetchRendition(ctx context.Context, st *runState, rec *renditio
 }
 
 // fetchPlaylist mengambil dan mem-parse playlist. Master playlist diturunkan ke
-// varian dengan bandwidth tertinggi (satu tingkat).
-func (s *Syncer) fetchPlaylist(ctx context.Context, rawURL string) (*hls.Playlist, string, error) {
+// satu varian dengan sisi pendek <= maxShortSide; fallback varian terkecil bila
+// tidak ada yang memenuhi.
+func (s *Syncer) fetchPlaylist(ctx context.Context, rawURL string, maxShortSide int) (*hls.Playlist, string, error) {
 	pl, finalURL, err := s.getPlaylist(ctx, rawURL)
 	if err != nil {
 		return nil, "", err
@@ -978,11 +982,9 @@ func (s *Syncer) fetchPlaylist(ctx context.Context, rawURL string) (*hls.Playlis
 		return nil, "", fmt.Errorf("syncjob: master playlist %s tanpa varian", rawURL)
 	}
 
-	best := pl.Variants[0]
-	for _, v := range pl.Variants[1:] {
-		if v.Bandwidth > best.Bandwidth {
-			best = v
-		}
+	best, ok := hls.SelectVariant(pl.Variants, maxShortSide)
+	if !ok {
+		return nil, "", fmt.Errorf("syncjob: master playlist %s tanpa varian ber-URI", rawURL)
 	}
 	next, err := resolveURL(finalURL, best.URI)
 	if err != nil {

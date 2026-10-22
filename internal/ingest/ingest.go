@@ -70,6 +70,7 @@ import (
 	"sync"
 	"time"
 
+	"vodlocal/internal/appsettings"
 	"vodlocal/internal/catalog"
 	"vodlocal/internal/download"
 	"vodlocal/internal/hls"
@@ -331,13 +332,18 @@ func (s *Service) Start(ctx context.Context, selections []catalog.Series) (int64
 	}
 
 	st := &runState{
-		runID:      runID,
-		genID:      genID,
-		label:      label,
-		build:      build,
-		dir:        build.Dir(),
-		selections: selections,
+		runID:        runID,
+		genID:        genID,
+		label:        label,
+		build:        build,
+		dir:          build.Dir(),
+		selections:   selections,
+		maxShortSide: appsettings.MaxShortSide(ctx, s.store.Read()),
 	}
+
+	s.log.Info("ingest dimulai",
+		"run_id", st.runID, "generation", st.label,
+		"series", len(st.selections), "max_short_side", st.maxShortSide)
 
 	// Langkah 6: jalankan sisanya di latar dan kembalikan runID segera.
 	// Context request dibatalkan begitu handler selesai, jadi pembatalannya
@@ -424,6 +430,8 @@ type runState struct {
 	build      *mediafs.Build
 	dir        string
 	selections []catalog.Series
+	// maxShortSide adalah snapshot setting untuk seluruh run.
+	maxShortSide int
 
 	titles     int
 	playables  int
@@ -850,7 +858,7 @@ type renditionBuild struct {
 // episodeDir adalah komponen path folder series/episode (UUID provider atau
 // fallback-nya).
 func (s *Service) buildRendition(ctx context.Context, st *runState, provider, category, seriesDir, episodeDir, streamURL string) (*renditionBuild, error) {
-	media, finalURL, variant, variantURL, err := s.fetchMediaPlaylist(ctx, streamURL)
+	media, finalURL, variant, variantURL, err := s.fetchMediaPlaylist(ctx, streamURL, st.maxShortSide)
 	if err != nil {
 		return nil, err
 	}
@@ -957,7 +965,7 @@ func (s *Service) buildRendition(ctx context.Context, st *runState, provider, ca
 // satu media playlist. Bila provider langsung memberi media playlist (bukan
 // master), playlist itu dipakai apa adanya. Nilai balik keempat adalah URL
 // varian yang dipakai sebagai renditions.source_url.
-func (s *Service) fetchMediaPlaylist(ctx context.Context, streamURL string) (*hls.Playlist, string, hls.Variant, string, error) {
+func (s *Service) fetchMediaPlaylist(ctx context.Context, streamURL string, maxShortSide int) (*hls.Playlist, string, hls.Variant, string, error) {
 	pl, finalURL, err := s.getPlaylist(ctx, streamURL)
 	if err != nil {
 		return nil, "", hls.Variant{}, "", err
@@ -969,7 +977,7 @@ func (s *Service) fetchMediaPlaylist(ctx context.Context, streamURL string) (*hl
 		return nil, "", hls.Variant{}, "", fmt.Errorf("ingest: master playlist %s tanpa varian", streamURL)
 	}
 
-	variant, ok := selectVariant(pl.Variants)
+	variant, ok := hls.SelectVariant(pl.Variants, maxShortSide)
 	if !ok {
 		return nil, "", hls.Variant{}, "", fmt.Errorf("ingest: master playlist %s tanpa variant ber-URI", streamURL)
 	}

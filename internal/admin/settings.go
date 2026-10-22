@@ -8,13 +8,14 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"vodlocal/internal/appsettings"
 )
 
 // Kunci app_settings yang dikelola panel (§10.6).
 const (
+	settingMaxShortSide            = appsettings.MaxShortSideKey
 	settingMaxParallelSegments     = "sync.max_parallel_segments"
-	settingScheduleEnabled         = "sync.schedule_enabled"
-	settingScheduleCron            = "sync.schedule_cron"
 	settingStorageWarnPercent      = "storage.warn_percent"
 	settingStorageBlockSyncPercent = "storage.block_sync_percent"
 	settingProgressDebounceSeconds = "playback.progress_debounce_seconds"
@@ -39,9 +40,8 @@ type settingDef struct {
 
 // settingDefs adalah daftar field pengaturan dalam urutan tampil (§10.6).
 var settingDefs = []settingDef{
+	{Key: settingMaxShortSide, Label: "Batas sisi pendek varian video (p)", Kind: settingKindInt, Default: "720", Min: 144, Max: 1080},
 	{Key: settingMaxParallelSegments, Label: "Segmen paralel maksimum", Kind: settingKindInt, Default: "8", Min: 1, Max: 64},
-	{Key: settingScheduleEnabled, Label: "Jadwal sync otomatis aktif", Kind: settingKindBool, Default: "false"},
-	{Key: settingScheduleCron, Label: "Cron jadwal sync", Kind: settingKindText, Default: "0 2 * * *"},
 	{Key: settingStorageWarnPercent, Label: "Peringatan storage (%)", Kind: settingKindInt, Default: "80", Min: 1, Max: 100},
 	{Key: settingStorageBlockSyncPercent, Label: "Blokir sync saat storage (%)", Kind: settingKindInt, Default: "90", Min: 1, Max: 100},
 	{Key: settingProgressDebounceSeconds, Label: "Debounce simpan progress (detik)", Kind: settingKindInt, Default: "20", Min: 1, Max: 3600},

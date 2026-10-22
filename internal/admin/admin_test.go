@@ -423,9 +423,8 @@ func TestSettingsSave(t *testing.T) {
 	f.login()
 
 	form := url.Values{
+		"sync.max_short_side":                {"720"},
 		"sync.max_parallel_segments":         {"4"},
-		"sync.schedule_enabled":              {"1"},
-		"sync.schedule_cron":                 {"0 3 * * *"},
 		"storage.warn_percent":               {"70"},
 		"storage.block_sync_percent":         {"85"},
 		"playback.progress_debounce_seconds": {"15"},
@@ -437,9 +436,8 @@ func TestSettingsSave(t *testing.T) {
 	}
 
 	want := map[string]string{
+		"sync.max_short_side":                "720",
 		"sync.max_parallel_segments":         "4",
-		"sync.schedule_enabled":              "true",
-		"sync.schedule_cron":                 "0 3 * * *",
 		"storage.warn_percent":               "70",
 		"storage.block_sync_percent":         "85",
 		"playback.progress_debounce_seconds": "15",

@@ -256,7 +256,7 @@ Akun admin dibuat otomatis saat boot **hanya jika** `VODLOCAL_ADMIN_USER` dan
 | `/sync/{id}` | Detail run + progres konten (episode, rendition, persen, error) |
 | `/devices` | Daftar tablet, nonaktifkan/aktifkan, rotasi token |
 | `/storage` | Daftar konten per series, hapus per konten, hapus semua konten |
-| `/settings` | Ambang storage, paralelisme sync, jadwal cron |
+| `/settings` | Batas varian (default 720p), ambang storage, paralelisme sync |
 
 **List Content.** Modal dengan tiga tab: **Movie**, **Series**, dan **Short
 (Dramahits)**. Tab Movie/Series memanggil API Densgo, tab Short memanggil API
@@ -786,7 +786,6 @@ internal/httpserver/ router, auth, media, health
 internal/api/        handler katalog & playback
 internal/syncjob/    orkestrasi sync legacy
 internal/admin/      panel admin HTML + Pico CSS
-internal/scheduler/  penjadwal sync berbasis cron
 internal/loadgen/    mesin uji beban
 internal/notify/     webhook & Telegram
 internal/devseed/    pembuat konten sintetis
