@@ -42,7 +42,7 @@ kehilangan koneksi internet.
 | Panel admin | HTML server-rendered + Pico CSS v2.1.1 (vendored, tanpa CDN) |
 | Autentikasi | Bearer token per tablet, session admin + CSRF |
 | Deploy | Satu binary + systemd |
-| Target | 100 tablet, ±100 jam konten, LAN bus |
+| Target | 50 tablet per bus, ±100 jam konten, LAN bus |
 
 Konten berasal dari dua penyedia:
 
@@ -147,10 +147,11 @@ flowchart LR
 | RAM | 4–8 GB |
 | Disk | 200 GB+ NVMe |
 | NIC | Gigabit |
-| Jaringan | Switch gigabit + 2–3 AP 5 GHz untuk 100 tablet |
+| Jaringan | Switch gigabit + 2 AP 5 GHz untuk 50 tablet |
 
-> Router 10/100 Mbps + Wi-Fi 2.4 GHz tidak akan sanggup 100 stream. Server sudah
-> diuji lokal pada 100 klien; batas berikutnya adalah jaringan.
+> Router 10/100 Mbps atau Wi-Fi 2,4 GHz tidak akan sanggup 50 stream 720p. Untuk 50
+> tablet, gunakan 5 GHz; 2,4 GHz hanya layak untuk 360p/480p dengan jumlah penonton
+> bersamaan yang lebih kecil. Server bukan bottleneck utama—batasnya di jaringan bus.
 
 ---
 
@@ -743,7 +744,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/devices/register \
   -H 'Content-Type: application/json' \
   -d '{"name":"LoadTest","seat_number":"0"}'
 
-# jalankan 100 klien
+# jalankan 100 klien (benchmark kapasitas; target operasional 50)
 go run ./cmd/loadtest -base http://127.0.0.1:8080 \
   -playable <playable_id> -token <token> \
   -clients 100 -duration 60s -ramp 10s
@@ -819,7 +820,7 @@ openapi.json         spesifikasi OpenAPI 3.0.0
 | Subtitle Dramahits (`EXT-X-MEDIA`) | Belum diunduh |
 | Live streaming | Tidak didukung; sistem ini menyimpan konten on-demand secara offline |
 | Banyak batch per konten | Didukung: konten tetap tersedia selama punya rendition `ready` di batch mana pun yang selesai. **Tidak perlu** carry-over/hardlink |
-| Uji 100 stream di jaringan bus | Belum; butuh switch/AP gigabit |
+| Uji 50 stream di jaringan bus | Belum; butuh switch/AP 5 GHz |
 | Importer copy manual | Direncanakan |
 | CMS edit metadata | Direncanakan |
 | FTS5 | Belum; pencarian memakai `LIKE` (cukup sampai ±50.000 judul) |
