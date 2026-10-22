@@ -24,6 +24,7 @@
     { "name": "Media", "description": "Berkas media statis (playlist, segmen, subtitle, poster)." },
     { "name": "Admin", "description": "Panel admin (session + CSRF). Sebagian mengembalikan HTML/redirect." }
   ],
+  "security": [],
   "paths": {
     "/health": {
       "get": {
@@ -1254,7 +1255,7 @@
         "properties": {
           "code": { "type": "integer", "example": 3000 },
           "msg": { "type": "string", "example": "Judul tidak ditemukan" },
-          "data": { "nullable": true, "example": null },
+          "data": { "type": "object", "nullable": true, "example": null },
           "errors": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/Detail" },
@@ -1276,7 +1277,7 @@
           { "$ref": "#/components/schemas/SuccessEnvelope" },
           {
             "type": "object",
-            "properties": { "data": { "nullable": true, "example": null } }
+            "properties": { "data": { "type": "object", "nullable": true, "example": null } }
           }
         ]
       },
