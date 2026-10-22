@@ -149,6 +149,48 @@ func TestDownloadWithProgress(t *testing.T) {
 	}
 }
 
+func TestDownloadWithProgressStreamsWhileDispatching(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/fast" {
+			<-release
+		}
+		io.WriteString(w, testBody(r.URL.Path))
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	jobs := []Job{
+		{URL: srv.URL + "/fast", Dest: filepath.Join(dir, "1.bin")},
+		{URL: srv.URL + "/blocked-1", Dest: filepath.Join(dir, "2.bin")},
+		{URL: srv.URL + "/blocked-2", Dest: filepath.Join(dir, "3.bin")},
+	}
+
+	progress := make(chan int, len(jobs))
+	done := make(chan error, 1)
+	go func() {
+		_, err := New(Options{MaxParallel: 1, Retries: 0}).DownloadWithProgress(
+			context.Background(), jobs,
+			func(done, total int, bytes int64) { progress <- done },
+		)
+		done <- err
+	}()
+
+	select {
+	case got := <-progress:
+		if got != 1 {
+			t.Fatalf("progres pertama = %d, mau 1", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("callback tidak dipanggil sebelum antrean job habis")
+	}
+
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("DownloadWithProgress() error = %v", err)
+	}
+}
+
 func TestDownloadSkipsExisting(t *testing.T) {
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -209,12 +209,16 @@ func (d *Downloader) download(ctx context.Context, jobs []Job, onProgress func(d
 		}()
 	}
 
-	// Every job is handed to the pool and collected, even when the context is
-	// already done: workers keep draining jobCh because fetch fails fast.
-	for _, job := range jobs {
-		jobCh <- job
-	}
-	close(jobCh)
+	// Every job is handed to the pool in a separate goroutine so results can
+	// be consumed (and progress reported) while the queue is still being fed.
+	// Sending synchronously here would delay the collector until nearly every
+	// job had been started, making progress jump from 0 to 100.
+	go func() {
+		for _, job := range jobs {
+			jobCh <- job
+		}
+		close(jobCh)
+	}()
 
 	// Consume hasil sambil worker berjalan supaya callback progres tidak
 	// menunggu seluruh unduhan selesai.
