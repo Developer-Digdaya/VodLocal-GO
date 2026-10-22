@@ -10,6 +10,12 @@
     <div>
       {{if eq .Kind "bool"}}
         <label><input type="checkbox" role="switch" name="{{.Key}}" value="1"{{if .Checked}} checked{{end}}> {{.Label}}</label>
+      {{else if eq .Kind "select"}}
+        {{$field := .}}
+        <label for="{{.Key}}">{{.Label}}</label>
+        <select class="full" id="{{.Key}}" name="{{.Key}}">
+          {{range .Options}}<option value="{{.Value}}"{{if eq .Value $field.Value}} selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
       {{else}}
         <label for="{{.Key}}">{{.Label}}</label>
         <input class="full" id="{{.Key}}" name="{{.Key}}" value="{{.Value}}"{{if eq .Kind "int"}} type="number"{{else}} type="text"{{end}}>

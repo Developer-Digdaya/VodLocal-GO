@@ -23,10 +23,17 @@ const (
 
 // Jenis field pada formulir pengaturan.
 const (
-	settingKindInt  = "int"
-	settingKindBool = "bool"
-	settingKindText = "text"
+	settingKindInt    = "int"
+	settingKindBool   = "bool"
+	settingKindText   = "text"
+	settingKindSelect = "select"
 )
+
+// settingOption adalah satu pilihan pada settingKindSelect.
+type settingOption struct {
+	Value string
+	Label string
+}
 
 // settingDef mendeskripsikan satu field pengaturan.
 type settingDef struct {
@@ -36,11 +43,24 @@ type settingDef struct {
 	Default string
 	Min     int
 	Max     int
+	Options []settingOption
 }
 
 // settingDefs adalah daftar field pengaturan dalam urutan tampil (§10.6).
 var settingDefs = []settingDef{
-	{Key: settingMaxShortSide, Label: "Batas sisi pendek varian video (p)", Kind: settingKindInt, Default: "720", Min: 144, Max: 1080},
+	{
+		Key:     settingMaxShortSide,
+		Label:   "Batas sisi pendek varian video",
+		Kind:    settingKindSelect,
+		Default: "720",
+		Options: []settingOption{
+			{Value: "360", Label: "360p"},
+			{Value: "480", Label: "480p"},
+			{Value: "540", Label: "540p"},
+			{Value: "720", Label: "720p"},
+			{Value: "1080", Label: "1080p"},
+		},
+	},
 	{Key: settingMaxParallelSegments, Label: "Segmen paralel maksimum", Kind: settingKindInt, Default: "8", Min: 1, Max: 64},
 	{Key: settingStorageWarnPercent, Label: "Peringatan storage (%)", Kind: settingKindInt, Default: "80", Min: 1, Max: 100},
 	{Key: settingStorageBlockSyncPercent, Label: "Blokir sync saat storage (%)", Kind: settingKindInt, Default: "90", Min: 1, Max: 100},
@@ -55,6 +75,7 @@ type settingField struct {
 	Value   string
 	Checked bool
 	Error   string
+	Options []settingOption
 }
 
 // settingsData adalah data halaman /settings.
@@ -98,6 +119,7 @@ func (a *Admin) renderSettings(w http.ResponseWriter, r *http.Request, values ma
 			Value:   value,
 			Checked: def.Kind == settingKindBool && isTruthy(value),
 			Error:   fieldErrors[def.Key],
+			Options: def.Options,
 		})
 	}
 
@@ -137,6 +159,13 @@ func (a *Admin) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 				fieldErrors[def.Key] = fmt.Sprintf("harus di antara %d dan %d", def.Min, def.Max)
 			default:
 				values[def.Key] = strconv.Itoa(number)
+			}
+		case settingKindSelect:
+			raw := strings.TrimSpace(r.PostFormValue(def.Key))
+			if !validSettingOption(def, raw) {
+				fieldErrors[def.Key] = "pilihan tidak valid"
+			} else {
+				values[def.Key] = raw
 			}
 		default:
 			raw := strings.TrimSpace(r.PostFormValue(def.Key))
@@ -221,6 +250,16 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.upd
 	}
 
 	return tx.Commit()
+}
+
+// validSettingOption melaporkan apakah value termasuk pilihan settingDef.
+func validSettingOption(def settingDef, value string) bool {
+	for _, option := range def.Options {
+		if option.Value == value {
+			return true
+		}
+	}
+	return false
 }
 
 // settingInt membaca satu pengaturan sebagai int, memakai default bila kosong

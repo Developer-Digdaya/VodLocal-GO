@@ -422,6 +422,22 @@ func TestSettingsSave(t *testing.T) {
 	f := newFixture(t)
 	f.login()
 
+	page := f.get("/settings")
+	if page.Code != http.StatusOK {
+		t.Fatalf("GET /settings: status = %d (body=%s)", page.Code, page.Body.String())
+	}
+	pageBody := page.Body.String()
+	for _, want := range []string{`name="sync.max_short_side"`, "<select", "720p"} {
+		if !strings.Contains(pageBody, want) {
+			t.Fatalf("halaman settings tidak memuat %q", want)
+		}
+	}
+	for _, unwanted := range []string{"sync.schedule_enabled", "sync.schedule_cron"} {
+		if strings.Contains(pageBody, unwanted) {
+			t.Fatalf("halaman settings masih memuat setting jadwal %q", unwanted)
+		}
+	}
+
 	form := url.Values{
 		"sync.max_short_side":                {"720"},
 		"sync.max_parallel_segments":         {"4"},
