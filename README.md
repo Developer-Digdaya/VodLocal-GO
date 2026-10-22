@@ -350,36 +350,166 @@ token yang sama.
 
 ## 9. Alur Playback
 
-Alur tablet: **daftar judul → detail/episode → playable → master playlist**. Generation
-tidak pernah dipakai klien sebagai input; ia hanya info batch pada response.
+Alur tablet: **register → daftar judul → detail/episode → playable → master playlist →
+progress**. Generation tidak pernah dipakai klien sebagai input; ia hanya informasi batch
+pada response.
+
+### 9.1 Register dan status online
 
 ```text
-1. POST /api/v1/devices/register                  (sekali, simpan token)
-2. GET  /api/v1/titles?page=1                     (home)
-   GET  /api/v1/progress?limit=20                 (lanjut tonton)
-   GET  /api/v1/genres                            (filter)
-3. GET  /api/v1/titles/{id}                       (detail + first_playable_id)
-   atau /api/v1/titles/{id}/episodes              (series: ready + playable_id)
-4. GET  /api/v1/playables/{playable_id}           (varian + subtitle + master_playlist_url)
-5. GET  /api/v1/playables/{id}/master.m3u8        (Bearer)
-6. GET  /media/{generation}/.../index.m3u8        (tanpa token)
-7. GET  /media/{generation}/.../seg-00001.ts      (tanpa token)
-8. POST /api/v1/progress                          (tiap ≤20 detik, per playable)
+POST /api/v1/devices/register
+  -> simpan token Bearer di perangkat
+  -> semua request /api/v1 memakai Authorization: Bearer <token>
 ```
 
-Catatan perilaku:
+Status online tidak memakai endpoint offline. Server menghitung:
 
-- Langkah 2–4 tidak mensyaratkan “generation aktif”. Judul, episode, dan playable
-  dilayani selama ada rendition `ready` pada batch mana pun yang sudah selesai.
-- Langkah 4 mengembalikan `generation` = **batch yang menyajikan** rendition itu. Nilainya
-  bisa batch lama, dan itu normal — bukan tanda data basi.
-- Langkah 5 bisa menunjuk batch lama. Master playlist selalu dihasilkan ulang dari
-  rendition `ready` batch penyaji, jadi isinya selalu sesuai isi disk batch tersebut.
-- Langkah 6–7 memakai URL apa adanya dari playlist. Path media bersifat opaque: klien
-  tidak menyusun `/media/<label>/...` sendiri.
-- Langkah 8 menyimpan progress **per playable** (`playable_id`), bukan per judul, sehingga
-  lanjut tonton tetap benar walau playable itu disajikan batch berbeda.
-- Generation hanya informasi tambahan pada response; tidak perlu dikirim balik klien.
+- online jika `last_seen_at` ≤ 5 menit;
+- offline jika `last_seen_at` lebih lama dari 5 menit atau belum pernah heartbeat;
+- `disabled` adalah status admin terpisah (`is_active=0`), bukan offline.
+
+`POST /api/v1/devices/me/heartbeat` dan setiap request `/api/v1` yang terautentikasi
+memperbarui `last_seen_at`. Request media `/media/*` **tidak** memperbaruinya. Agar status
+online akurat selama menonton:
+
+- kirim `POST /api/v1/devices/me/heartbeat` setiap 60–120 detik, atau
+- kirim `POST /api/v1/progress` setiap ≤20 detik—request ini juga memperbarui
+  `last_seen_at`.
+
+Menonton film satu jam tanpa heartbeat/progress dapat membuat perangkat tampil offline
+setelah 5 menit di panel admin, tetapi **playback tidak diblokir**; status offline hanya
+informasi monitoring.
+
+### 9.2 Series
+
+```text
+GET /api/v1/titles
+  -> GET /api/v1/titles/{id}
+  -> GET /api/v1/titles/{id}/episodes?season=1&page=1
+  -> pilih episode.playable_id
+  -> GET /api/v1/playables/{playable_id}
+  -> GET /api/v1/playables/{playable_id}/master.m3u8  (Bearer token)
+  -> ExoPlayer memutar master tersebut
+```
+
+### 9.3 Movie
+
+```text
+GET /api/v1/titles/{id}
+  -> first_playable_id
+  -> GET /api/v1/playables/{first_playable_id}
+  -> GET /api/v1/playables/{first_playable_id}/master.m3u8
+```
+
+### 9.4 Kenapa `/playables/{id}` dipanggil dulu?
+
+- Mendapat `title`, `episode`, `duration_seconds`, poster/artwork.
+- Mendapat daftar `variants` yang benar-benar `ready`.
+- Mendapat daftar `subtitles`.
+- Mendapat `master_playlist_url`.
+- Bisa menangani `409 / 3003` kalau media belum siap.
+
+Secara teknis bisa langsung ke master kalau sudah punya `playable_id` dan hanya butuh
+video, tetapi metadata/subtitle/kesiapan media tidak akan didapat.
+
+### 9.5 Path `/media/...` bukan entry point
+
+Contoh yang mungkin terlihat:
+
+```text
+/media/gen-000001/densgo/movie/10129/360p/index.m3u8
+```
+
+Itu **URL varian di dalam master playlist**, bukan entry point API. Master playlist yang
+dihasilkan `/playables/{id}/master.m3u8` berisi sesuatu seperti:
+
+```text
+#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=270000,RESOLUTION=640x360
+/media/gen-000001/densgo/movie/10129/360p/index.m3u8
+```
+
+Mobile harus:
+
+1. Memanggil `master.m3u8` dengan Bearer token.
+2. Menyerahkan URL master itu ke ExoPlayer.
+3. Membiarkan ExoPlayer mengikuti URI `/media/...` dari dalam master.
+
+Jangan menyusun atau menyimpan path `/media/...` langsung di aplikasi karena:
+
+- path mengandung `generation` yang berubah saat sync ulang;
+- memilih kualitas menjadi tanggung jawab client;
+- validasi `ready`, subtitle, dan metadata terlewat;
+- struktur storage bisa berubah tanpa mengubah API.
+
+`/media/*` memang tidak memakai auth, tetapi bukan kontrak utama. Path media mentah adalah
+detail internal server.
+
+### 9.6 Progress
+
+Progress disimpan **per device + per playable**, bukan per judul.
+
+Body yang benar (angka, bukan string):
+
+```json
+{
+  "playable_id": 9003,
+  "position_seconds": 42,
+  "duration_seconds": 138,
+  "completed": false
+}
+```
+
+Asal data:
+
+- `playable_id`: `episodes[].playable_id`, `playable.id`, atau `first_playable_id`—bukan
+  title ID.
+- `position_seconds`: posisi pemutar saat ini dari ExoPlayer.
+- `duration_seconds`: durasi media dari player atau `GET /playables/{id}`.
+- `completed`: keputusan client, misalnya `true` saat player mencapai akhir atau posisi
+  ≥95%.
+
+Wajib: `playable_id` dan `position_seconds`. `duration_seconds` dan `completed` opsional;
+`completed` default `false`.
+
+Cara simpan:
+
+- Saat mulai memutar: `GET /api/v1/progress/{playable_id}` untuk resume.
+- Kalau belum ada progress, mulai dari 0 (atau `first_playable_id` untuk judul baru).
+- Simpan periodik setiap ±10–20 detik, saat pause, saat aplikasi masuk background, dan
+  saat selesai.
+- `POST /api/v1/progress` bersifat upsert: posisi terbaru menimpa posisi lama.
+
+Kegunaan dua endpoint:
+
+- `GET /api/v1/progress?limit=20` → daftar **Lanjut Nonton** (playable, judul, episode,
+  poster, posisi, durasi, persentase, `completed`).
+- `GET /api/v1/progress/{playable_id}` → posisi satu playable untuk melanjutkan detik ke
+  berapa.
+
+Catatan penting:
+
+- `GET /progress` tidak memfilter `completed=true`; client harus memfilter jika ingin
+  menyembunyikan yang sudah selesai.
+- Server menghitung `progress_percent` dari `position_seconds / duration_seconds`; jika
+  duration tidak dikirim, persentasenya 0.
+- `completed` tidak dihitung otomatis server; client yang menentukan.
+- Jika `completed=true`, player berikutnya sebaiknya mulai dari awal.
+
+Alur **Lanjut Nonton**:
+
+```text
+GET /api/v1/progress
+  -> pilih item
+  -> GET /api/v1/playables/{playable_id}
+  -> GET /api/v1/progress/{playable_id}  (ambil posisi)
+  -> GET /api/v1/playables/{playable_id}/master.m3u8
+  -> seek ke position_seconds
+```
+
+Ringkasnya: **pakai master playlist, bukan path media mentah; simpan progress per
+playable; dan pakai progress list untuk Lanjut Nonton.** Generation hanya metadata batch
+dan tidak boleh menjadi input playback.
 
 Player Android memakai ExoPlayer/Media3 `HlsMediaSource`. URL master memerlukan header
 Bearer; varian dan segmen tidak.
