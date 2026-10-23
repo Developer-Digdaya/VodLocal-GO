@@ -738,6 +738,40 @@ git checkout <commit-lama>
 sudo ./scripts/deploy-linux.sh
 ```
 
+### 12.6 Auto-mount USB di mini PC Linux
+
+Untuk bus yang juga melakukan export dari Linux, pasang auto-mount USB sekali
+per mini PC. Jalankan setelah `deploy-linux.sh` agar user `vodlocal` sudah ada:
+
+```bash
+sudo bash scripts/ubuntu-usb-automount.sh
+```
+
+Skrip aman dijalankan ulang; file helper, udev rule, dan konfigurasi akan
+ditimpa dengan versi yang sama.
+
+Skrip memasang udev rule dan helper root. Setiap partisi USB dengan filesystem
+exFAT/VFAT/NTFS di-mount read-write ke:
+
+```text
+/run/media/vodlocal/<uuid>
+```
+
+Mount memakai `noexec,nosuid,nodev` dan di-unmount saat disk dicabut. Skrip juga
+menambahkan `ReadWritePaths` untuk `/run/media/vodlocal` ke unit systemd agar
+service `vodlocal` dapat menulis paket export. Prasyarat Ubuntu: `exfatprogs` untuk
+exFAT dan `ntfs-3g`/`ntfs3` untuk NTFS.
+
+Jika service `vodlocal` sudah berjalan sebelum installer dijalankan, restart
+sekali agar drop-in systemd terbaca:
+
+```bash
+sudo systemctl restart vodlocal
+```
+
+Ini hanya me-mount disk; tidak menjalankan import atau export otomatis. Setelah
+disk terpasang, pilih drive tersebut di modal Import/Export admin.
+
 ---
 
 ## 13. Pengujian
