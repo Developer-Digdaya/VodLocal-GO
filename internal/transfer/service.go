@@ -156,6 +156,7 @@ type LocalContent struct {
 	ExternalID      string `json:"external_id"`
 	Title           string `json:"title"`
 	Status          string `json:"status"`
+	PosterURL       string `json:"poster_url"`
 	EpisodesDone    int64  `json:"episodes_done"`
 	EpisodesTotal   int64  `json:"episodes_total"`
 	Renditions      int64  `json:"renditions"`
@@ -163,11 +164,28 @@ type LocalContent struct {
 }
 
 // ListLocalContent returns completed generation items that can be exported.
-func (s *Service) ListLocalContent(ctx context.Context) ([]LocalContent, error) {
+// page is 1-based and perPage defaults to/max 30/200.
+func (s *Service) ListLocalContent(ctx context.Context, page, perPage int) ([]LocalContent, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 30
+	}
+	if perPage > 200 {
+		perPage = 200
+	}
+
+	var total int64
+	if err := s.store.Read().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM generation_items WHERE status = 'done'`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
 	rows, err := s.store.Read().QueryContext(ctx, `
 SELECT gi.id, gi.generation_id, g.label, COALESCE(pr.code, ''), gi.category,
        gi.series_external_id, gi.series_title, gi.status,
-       gi.episodes_done, gi.total_episodes,
+       COALESCE(t.poster_path, ''), gi.episodes_done, gi.total_episodes,
        COUNT(r.id), COALESCE(SUM(r.total_bytes), 0)
   FROM generation_items gi
   JOIN generations g ON g.id = gi.generation_id
@@ -179,23 +197,29 @@ SELECT gi.id, gi.generation_id, g.label, COALESCE(pr.code, ''), gi.category,
  WHERE gi.status = 'done'
  GROUP BY gi.id
  ORDER BY gi.id DESC
- LIMIT 500`)
+ LIMIT ? OFFSET ?`, perPage, (page-1)*perPage)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := make([]LocalContent, 0)
+	out := make([]LocalContent, 0, perPage)
 	for rows.Next() {
-		var item LocalContent
+		var (
+			item   LocalContent
+			poster string
+		)
 		if err := rows.Scan(&item.ItemID, &item.GenerationID, &item.GenerationLabel,
 			&item.Provider, &item.Category, &item.ExternalID, &item.Title, &item.Status,
-			&item.EpisodesDone, &item.EpisodesTotal, &item.Renditions, &item.Bytes); err != nil {
-			return nil, err
+			&poster, &item.EpisodesDone, &item.EpisodesTotal, &item.Renditions, &item.Bytes); err != nil {
+			return nil, 0, err
+		}
+		if poster != "" {
+			item.PosterURL = "/media/" + item.GenerationLabel + "/" + strings.TrimLeft(poster, "/")
 		}
 		out = append(out, item)
 	}
-	return out, rows.Err()
+	return out, total, rows.Err()
 }
 
 // ListPackages scans root/VOD-EXPORT for packages.

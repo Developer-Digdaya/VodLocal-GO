@@ -59,6 +59,17 @@ func TestExportImportRoundTrip(t *testing.T) {
 	writeTestFile(t, filepath.Join(base, "360p", "seg-00001.ts"), []byte("segment-one"))
 	writeTestFile(t, filepath.Join(base, "360p", "seg-00002.ts"), []byte("segment-two"))
 
+	items, total, err := svc.ListLocalContent(ctx, 1, 30)
+	if err != nil {
+		t.Fatalf("ListLocalContent: %v", err)
+	}
+	if total != 1 || len(items) != 1 {
+		t.Fatalf("local content = %d/%d, mau 1/1", len(items), total)
+	}
+	if items[0].PosterURL != "/media/gen-000001/densgo/movie/1/poster.jpg" {
+		t.Fatalf("poster_url = %q", items[0].PosterURL)
+	}
+
 	dest := filepath.Join(dir, "hdd")
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		t.Fatal(err)

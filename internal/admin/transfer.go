@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"vodlocal/internal/response"
@@ -44,8 +45,10 @@ func (a *Admin) handleTransferPackages(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleTransferLocalContent lists downloaded content available for export.
+// Query: page (1-based), per_page (default 30, max 200).
 func (a *Admin) handleTransferLocalContent(w http.ResponseWriter, r *http.Request) {
-	items, err := a.transfer.ListLocalContent(r.Context())
+	page, perPage := transferPage(r.URL.Query(), 30)
+	items, total, err := a.transfer.ListLocalContent(r.Context(), page, perPage)
 	if err != nil {
 		response.ErrorMsg(w, response.CodeInternalError, "Gagal membaca konten lokal.")
 		return
@@ -53,7 +56,41 @@ func (a *Admin) handleTransferLocalContent(w http.ResponseWriter, r *http.Reques
 	if items == nil {
 		items = []transfer.LocalContent{}
 	}
-	response.Success(w, map[string]any{"items": items})
+	response.Success(w, map[string]any{
+		"items": items,
+		"meta": map[string]any{
+			"page":        page,
+			"per_page":    perPage,
+			"total":       total,
+			"total_pages": pageCount(total, perPage),
+		},
+	})
+}
+
+func transferPage(query map[string][]string, defaultPerPage int) (int, int) {
+	page := 1
+	perPage := defaultPerPage
+	if raw := strings.TrimSpace(queryGet(query, "page")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			page = n
+		}
+	}
+	if raw := strings.TrimSpace(queryGet(query, "per_page")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			perPage = n
+		}
+	}
+	if perPage > 200 {
+		perPage = 200
+	}
+	return page, perPage
+}
+
+func pageCount(total int64, perPage int) int64 {
+	if total <= 0 || perPage <= 0 {
+		return 0
+	}
+	return (total + int64(perPage) - 1) / int64(perPage)
 }
 
 // handleTransferExport starts an export to the selected drive.

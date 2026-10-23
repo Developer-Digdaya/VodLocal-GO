@@ -95,6 +95,16 @@ label { display: block; font-size: .85rem; margin-bottom: .2rem; }
 .filters > div:last-child { display: flex; align-items: center; align-self: end; height: 2.25rem; gap: .5rem; }
 .filters > div:last-child button { width: auto; }
 .filters > div:last-child a { line-height: 1.2; }
+.transfer-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .75rem; align-items: end; margin-bottom: 1rem; }
+.transfer-toolbar > .field { min-width: 0; }
+.transfer-toolbar > .field select { width: 100%; margin-bottom: 0; }
+.transfer-toolbar > .toolbar-actions { display: flex; align-items: center; gap: .65rem; height: 2.25rem; white-space: nowrap; }
+.transfer-toolbar > .toolbar-actions button { flex: 0 0 auto; }
+.transfer-toolbar > .toolbar-actions .muted { line-height: 1.2; }
+@media (max-width: 720px) {
+  .transfer-toolbar { grid-template-columns: 1fr; gap: .5rem; align-items: stretch; }
+  .transfer-toolbar > .toolbar-actions { height: auto; flex-wrap: wrap; justify-content: flex-start; }
+}
 .pager { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .75rem; font-size: .88rem; }
 .pager a { display: inline-block; padding: .3rem .7rem; border: 1px solid #ccd3db; border-radius: .35rem; background: #fff; color: #12324f; text-decoration: none; }
 .pager a:hover { background: #eef4fa; }

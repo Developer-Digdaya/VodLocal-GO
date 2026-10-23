@@ -130,12 +130,12 @@
 
   <div class="dialog-body" id="offline-panel" hidden>
     <p class="flash error" id="offline-error" hidden></p>
-    <div class="filters">
-      <div>
+    <div class="transfer-toolbar">
+      <div class="field">
         <label for="offline-drive">Drive / mount point</label>
         <select id="offline-drive"></select>
       </div>
-      <div class="sync-actions">
+      <div class="toolbar-actions">
         <button type="button" class="secondary" id="offline-refresh">Refresh</button>
         <span class="small muted" id="offline-status"></span>
       </div>
@@ -159,18 +159,23 @@
   </div>
   <div class="dialog-body">
     <p class="flash error" id="export-error" hidden></p>
-    <div class="filters">
-      <div>
+    <div class="transfer-toolbar">
+      <div class="field">
         <label for="export-drive">Drive tujuan</label>
         <select id="export-drive"></select>
       </div>
-      <div class="sync-actions">
+      <div class="toolbar-actions">
         <button type="button" class="secondary" id="export-refresh">Refresh</button>
         <span class="small muted" id="export-status"></span>
       </div>
     </div>
     <p class="muted small">Pilih konten yang sudah diunduh. Paket ditulis ke folder VOD-EXPORT di drive tujuan.</p>
     <div id="export-list"><p class="muted">Memuat konten lokal…</p></div>
+    <div class="pager" role="navigation" aria-label="Navigasi konten export">
+      <button type="button" class="secondary" id="export-prev" disabled>‹ Sebelumnya</button>
+      <span class="small muted" id="export-page-info" aria-live="polite">Halaman 1 / 1</span>
+      <button type="button" class="secondary" id="export-next" disabled>Berikutnya ›</button>
+    </div>
   </div>
   <div class="dialog-foot">
     <span class="spacer"></span>
@@ -763,8 +768,14 @@
   var listElement = document.getElementById('export-list');
   var errorElement = document.getElementById('export-error');
   var submitButton = document.getElementById('export-submit');
+  var prevButton = document.getElementById('export-prev');
+  var nextButton = document.getElementById('export-next');
+  var pageInfo = document.getElementById('export-page-info');
   var selected = new Set();
   var content = [];
+  var currentPage = 1;
+  var lastPage = 1;
+  var totalItems = 0;
 
   function bytesLabel(n) {
     if (!n) { return '0 B'; }
@@ -788,6 +799,12 @@
   function updateButton() {
     submitButton.textContent = 'Export (' + selected.size + ')';
     submitButton.disabled = selected.size === 0 || !driveSelect.value;
+  }
+  function updatePager() {
+    pageInfo.textContent = 'Halaman ' + currentPage + ' / ' + lastPage +
+      (totalItems ? ' · ' + totalItems + ' konten' : '');
+    prevButton.disabled = currentPage <= 1;
+    nextButton.disabled = currentPage >= lastPage;
   }
   function fetchJSON(url) {
     return window.fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
@@ -850,24 +867,49 @@
         ' · ' + bytesLabel(item.bytes);
       info.appendChild(meta);
       label.appendChild(checkbox);
+      if (item.poster_url) {
+        var poster = document.createElement('img');
+        poster.className = 'content-poster';
+        poster.alt = '';
+        poster.loading = 'lazy';
+        poster.src = item.poster_url;
+        label.appendChild(poster);
+      }
       label.appendChild(info);
       grid.appendChild(label);
     });
     listElement.appendChild(grid);
   }
-  function loadContent() {
-    return fetchJSON('/transfer/local-content').then(function (data) {
-      content = data.items || [];
-      renderContent();
-    }).catch(function (err) { showError(err.message); });
+  function loadContent(page) {
+    page = page || 1;
+    listElement.textContent = '';
+    var loading = document.createElement('p');
+    loading.className = 'muted';
+    loading.textContent = 'Memuat konten lokal…';
+    listElement.appendChild(loading);
+    return fetchJSON('/transfer/local-content?page=' + encodeURIComponent(page) + '&per_page=30')
+      .then(function (data) {
+        content = data.items || [];
+        var meta = data.meta || {};
+        currentPage = meta.page || page;
+        lastPage = Math.max(1, meta.total_pages || 1);
+        totalItems = meta.total || 0;
+        if (currentPage > lastPage) { currentPage = lastPage; }
+        renderContent();
+        updatePager();
+      }).catch(function (err) { showError(err.message); });
   }
   function openDialog() {
     selected.clear();
+    currentPage = 1;
+    lastPage = 1;
+    totalItems = 0;
     updateButton();
+    updatePager();
     clearError();
     if (typeof dialog.showModal === 'function') { dialog.showModal(); } else { dialog.setAttribute('open', 'open'); }
     loadDrives();
-    loadContent();
+    loadContent(1);
   }
   function closeDialog() {
     if (typeof dialog.close === 'function') { dialog.close(); } else { dialog.removeAttribute('open'); }
@@ -894,10 +936,20 @@
     refreshButton.addEventListener('click', function () {
       clearError();
       loadDrives();
-      loadContent();
+      loadContent(currentPage);
     });
   }
   if (driveSelect) { driveSelect.addEventListener('change', updateButton); }
+  if (prevButton) {
+    prevButton.addEventListener('click', function () {
+      if (currentPage > 1) { loadContent(currentPage - 1); }
+    });
+  }
+  if (nextButton) {
+    nextButton.addEventListener('click', function () {
+      if (currentPage < lastPage) { loadContent(currentPage + 1); }
+    });
+  }
   if (submitButton) { submitButton.addEventListener('click', submit); }
 }());
 </script>
