@@ -221,7 +221,7 @@ SELECT gi.id, gi.generation_id, g.label, COALESCE(pr.code, ''), gi.category,
        AND r.generation_id = gi.generation_id AND r.status = 'ready'
  WHERE gi.rn = 1
  GROUP BY gi.id
- ORDER BY gi.id DESC
+ ORDER BY lower(gi.series_title) ASC, gi.id DESC
  LIMIT ? OFFSET ?`, perPage, (page-1)*perPage)
 	if err != nil {
 		return nil, 0, err
@@ -267,6 +267,41 @@ func (s *Service) ListPackages(ctx context.Context, root string) ([]PackageInfo,
 		}
 	}
 	return packages, nil
+}
+
+// AllLocalContentIDs returns every unique downloadable title id for the
+// "export all" action. The result uses the same deduplication rule as the
+// paginated list.
+func (s *Service) AllLocalContentIDs(ctx context.Context) ([]int64, error) {
+	ctx, cancel := s.sqlCtx(ctx)
+	defer cancel()
+	rows, err := s.store.Read().QueryContext(ctx, `
+WITH done_items AS (
+  SELECT gi.*,
+         ROW_NUMBER() OVER (
+           PARTITION BY gi.provider_id, gi.series_external_id
+           ORDER BY gi.id DESC
+         ) AS rn
+    FROM generation_items gi
+   WHERE gi.status = 'done'
+)
+SELECT gi.id
+  FROM done_items gi
+ WHERE gi.rn = 1
+ ORDER BY lower(gi.series_title) ASC, gi.id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // LocalContentIDsByBatch returns all deduplicated generation_items ids for a

@@ -184,6 +184,7 @@
   </div>
   <div class="dialog-foot">
     <span class="spacer"></span>
+    <button type="button" class="secondary" id="export-all" disabled>Export semua</button>
     <button type="button" id="export-submit" disabled>Export (0)</button>
     <button type="button" class="secondary" id="cancel-export">Batal</button>
   </div>
@@ -860,6 +861,7 @@
   var listElement = document.getElementById('export-list');
   var errorElement = document.getElementById('export-error');
   var submitButton = document.getElementById('export-submit');
+  var exportAllButton = document.getElementById('export-all');
   var prevButton = document.getElementById('export-prev');
   var nextButton = document.getElementById('export-next');
   var pageInfo = document.getElementById('export-page-info');
@@ -891,6 +893,9 @@
   function updateButton() {
     submitButton.textContent = 'Export (' + selected.size + ')';
     submitButton.disabled = selected.size === 0 || !driveSelect.value;
+    if (exportAllButton) {
+      exportAllButton.disabled = !driveSelect.value || totalItems === 0;
+    }
   }
   function updatePager() {
     pageInfo.textContent = 'Halaman ' + currentPage + ' / ' + lastPage +
@@ -935,82 +940,43 @@
       listElement.appendChild(empty);
       return;
     }
-    var groups = new Map();
+    var grid = document.createElement('div');
+    grid.className = 'content-grid';
     content.forEach(function (item) {
-      var label = item.generation_label || 'batch';
-      if (!groups.has(label)) { groups.set(label, []); }
-      groups.get(label).push(item);
-    });
-    groups.forEach(function (items, label) {
-      var section = document.createElement('section');
-      section.className = 'export-batch';
-      var head = document.createElement('label');
-      head.className = 'batch-check';
-      var all = document.createElement('input');
-      all.type = 'checkbox';
-      var chosen = items.filter(function (item) { return selected.has(item.item_id); }).length;
-      all.checked = chosen === items.length;
-      all.indeterminate = chosen > 0 && chosen < items.length;
-      all.addEventListener('change', function () {
-        all.disabled = true;
-        fetchJSON('/transfer/batch-items?label=' + encodeURIComponent(label)).then(function (data) {
-          var ids = data.item_ids || [];
-          ids.forEach(function (id) {
-            if (all.checked) { selected.add(Number(id)); } else { selected.delete(Number(id)); }
-          });
-          all.disabled = false;
-          renderContent();
-          updateButton();
-        }).catch(function (err) {
-          all.disabled = false;
-          showError(err.message);
-        });
+      var card = document.createElement('label');
+      card.className = 'content-item';
+      var checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = selected.has(item.item_id);
+      checkbox.addEventListener('change', function () {
+        if (checkbox.checked) { selected.add(item.item_id); } else { selected.delete(item.item_id); }
+        updateButton();
       });
-      var text = document.createElement('span');
-      text.textContent = label + ' · pilih semua batch ini';
-      head.appendChild(all);
-      head.appendChild(text);
-      section.appendChild(head);
-
-      var grid = document.createElement('div');
-      grid.className = 'content-grid';
-      items.forEach(function (item) {
-        var card = document.createElement('label');
-        card.className = 'content-item';
-        var checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = selected.has(item.item_id);
-        checkbox.addEventListener('change', function () {
-          if (checkbox.checked) { selected.add(item.item_id); } else { selected.delete(item.item_id); }
-          updateButton();
-        });
-        var info = document.createElement('span');
-        info.className = 'content-info';
-        var title = document.createElement('strong');
-        title.textContent = item.title;
-        info.appendChild(title);
-        var meta = document.createElement('span');
-        meta.className = 'small muted';
-        meta.textContent = item.category + ' · ' + item.generation_label +
-          ' · ' + item.episodes_done + '/' + item.episodes_total + ' episode' +
-          ' · ' + bytesLabel(item.bytes) +
-          (item.copies > 1 ? ' · ada di ' + item.copies + ' batch (hanya sekali diexport)' : '');
-        info.appendChild(meta);
-        card.appendChild(checkbox);
-        if (item.poster_url) {
-          var poster = document.createElement('img');
-          poster.className = 'content-poster';
-          poster.alt = '';
-          poster.loading = 'lazy';
-          poster.src = item.poster_url;
-          card.appendChild(poster);
-        }
-        card.appendChild(info);
-        grid.appendChild(card);
-      });
-      section.appendChild(grid);
-      listElement.appendChild(section);
+      var info = document.createElement('span');
+      info.className = 'content-info';
+      var title = document.createElement('strong');
+      title.textContent = item.title;
+      info.appendChild(title);
+      var meta = document.createElement('span');
+      meta.className = 'small muted';
+      meta.textContent = item.category + ' · ' + item.generation_label +
+        ' · ' + item.episodes_done + '/' + item.episodes_total + ' episode' +
+        ' · ' + bytesLabel(item.bytes) +
+        (item.copies > 1 ? ' · ada di ' + item.copies + ' batch (hanya sekali diexport)' : '');
+      info.appendChild(meta);
+      card.appendChild(checkbox);
+      if (item.poster_url) {
+        var poster = document.createElement('img');
+        poster.className = 'content-poster';
+        poster.alt = '';
+        poster.loading = 'lazy';
+        poster.src = item.poster_url;
+        card.appendChild(poster);
+      }
+      card.appendChild(info);
+      grid.appendChild(card);
     });
+    listElement.appendChild(grid);
   }
   function loadContent(page) {
     page = page || 1;
@@ -1029,6 +995,7 @@
         if (currentPage > lastPage) { currentPage = lastPage; }
         renderContent();
         updatePager();
+        updateButton();
       }).catch(function (err) { showError(err.message); });
   }
   function openDialog() {
@@ -1060,6 +1027,20 @@
     document.body.appendChild(form);
     form.submit();
   }
+  function submitAll() {
+    if (!driveSelect.value || totalItems === 0) { return; }
+    var form = document.createElement('form');
+    form.method = 'post';
+    form.action = '/transfer/export';
+    var token = document.createElement('input');
+    token.type = 'hidden'; token.name = '_csrf'; token.value = csrf(); form.appendChild(token);
+    var destination = document.createElement('input');
+    destination.type = 'hidden'; destination.name = 'destination'; destination.value = driveSelect.value; form.appendChild(destination);
+    var all = document.createElement('input');
+    all.type = 'hidden'; all.name = 'all'; all.value = '1'; form.appendChild(all);
+    document.body.appendChild(form);
+    form.submit();
+  }
 
   if (openButton) { openButton.addEventListener('click', openDialog); }
   if (closeButton) { closeButton.addEventListener('click', closeDialog); }
@@ -1083,6 +1064,7 @@
     });
   }
   if (submitButton) { submitButton.addEventListener('click', submit); }
+  if (exportAllButton) { exportAllButton.addEventListener('click', submitAll); }
 }());
 </script>
 {{end}}

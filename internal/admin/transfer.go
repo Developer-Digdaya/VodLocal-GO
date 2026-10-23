@@ -165,10 +165,26 @@ func (a *Admin) handleTransferExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var ids []int64
-	if err := json.Unmarshal([]byte(r.PostFormValue("items")), &ids); err != nil || len(ids) == 0 {
+	var (
+		ids []int64
+		err error
+	)
+	if strings.TrimSpace(r.PostFormValue("all")) == "1" {
+		ids, err = a.transfer.AllLocalContentIDs(r.Context())
+		if err != nil {
+			a.log.Warn("admin: gagal membaca semua konten export", "err", err)
+			a.renderContentMessage(w, r, http.StatusInternalServerError,
+				"Gagal membaca konten lokal untuk export.")
+			return
+		}
+	} else if err := json.Unmarshal([]byte(r.PostFormValue("items")), &ids); err != nil {
 		a.renderContentMessage(w, r, http.StatusUnprocessableEntity,
-			"Pilih minimal satu konten untuk diexport.")
+			"Pilih minimal satu konten atau gunakan Export semua.")
+		return
+	}
+	if len(ids) == 0 {
+		a.renderContentMessage(w, r, http.StatusUnprocessableEntity,
+			"Tidak ada konten yang bisa diexport.")
 		return
 	}
 

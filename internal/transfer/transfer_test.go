@@ -105,6 +105,10 @@ func TestExportImportRoundTrip(t *testing.T) {
 	if err != nil || len(ids) != 1 || ids[0] != 1 {
 		t.Fatalf("batch ids = %v/%v, mau [1]", ids, err)
 	}
+	allIDs, err := svc.AllLocalContentIDs(ctx)
+	if err != nil || len(allIDs) != 1 || allIDs[0] != 1 {
+		t.Fatalf("all export ids = %v/%v, mau [1]", allIDs, err)
+	}
 
 	// Server bus adalah database terpisah dari server kantor.
 	destDir := filepath.Join(dir, "bus")
