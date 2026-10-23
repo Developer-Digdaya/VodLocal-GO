@@ -26,7 +26,7 @@ MOUNT_UNIT="/etc/systemd/system/vodlocal-usb-mount@.service"
 UNMOUNT_UNIT="/etc/systemd/system/vodlocal-usb-unmount@.service"
 SERVICE_DROPIN="/etc/systemd/system/vodlocal.service.d/50-vodlocal-usb.conf"
 
-for cmd in mount umount mountpoint findmnt lsblk udevadm logger systemd-tmpfiles systemctl; do
+for cmd in mount umount mountpoint findmnt lsblk blkid udevadm logger systemd-tmpfiles systemctl; do
   command -v "$cmd" >/dev/null 2>&1 || {
     echo "ERROR: '$cmd' tidak ditemukan; instal util-linux/udev" >&2
     exit 1
@@ -61,7 +61,8 @@ cat > "$MOUNT_HELPER" <<'HELPER'
 #!/usr/bin/env bash
 set -euo pipefail
 
-# udev memanggil helper ini sebagai root dengan argumen /dev/<partition>.
+# Dipanggil udev (RUN) atau systemd (mount unit) sebagai root dengan argumen
+# /dev/<partition>.
 . /etc/default/vodlocal-usb
 
 DEV="${1:-}"
@@ -70,7 +71,12 @@ DEV="${1:-}"
 
 log() { logger -t vodlocal-usb -- "$*" 2>/dev/null || true; }
 
+# Properti ID_FS_* hanya ada saat dipanggil udev. Saat dipanggil systemd,
+# probe sendiri supaya helper tidak bergantung pada environment udev.
 FSTYPE="${ID_FS_TYPE:-}"
+if [ -z "$FSTYPE" ]; then
+  FSTYPE="$(blkid -o value -s TYPE "$DEV" 2>/dev/null || true)"
+fi
 case "$FSTYPE" in
   exfat|vfat|ntfs|ntfs3) ;;
   *) exit 0 ;; # bukan filesystem yang didukung
@@ -84,6 +90,12 @@ fi
 NAME="${ID_FS_UUID:-}"
 if [ -z "$NAME" ]; then
   NAME="${ID_FS_LABEL:-}"
+fi
+if [ -z "$NAME" ]; then
+  NAME="$(blkid -o value -s UUID "$DEV" 2>/dev/null || true)"
+fi
+if [ -z "$NAME" ]; then
+  NAME="$(blkid -o value -s LABEL "$DEV" 2>/dev/null || true)"
 fi
 if [ -z "$NAME" ]; then
   NAME="dev-${DEV##*/}"
@@ -218,9 +230,11 @@ UNIT
 chmod 0644 "$UNMOUNT_UNIT"
 
 # Semua partisi USB; helper sendiri yang menolak filesystem yang tidak didukung.
+# SUBSYSTEMS=="usb" menelusuri rantai parent sehingga tidak bergantung pada
+# properti ID_BUS yang bisa berbeda antar versi udev.
 cat > "$RULE_FILE" <<'RULE'
-ACTION=="add", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", ENV{ID_FS_TYPE}=="exfat|vfat|ntfs|ntfs3", RUN{program}+="/bin/systemctl --no-block start vodlocal-usb-mount@%k.service"
-ACTION=="remove", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", RUN{program}+="/bin/systemctl --no-block start vodlocal-usb-unmount@%k.service"
+ACTION=="add", SUBSYSTEM=="block", SUBSYSTEMS=="usb", RUN{program}+="/bin/systemctl --no-block start vodlocal-usb-mount@%k.service"
+ACTION=="remove", SUBSYSTEM=="block", SUBSYSTEMS=="usb", RUN{program}+="/bin/systemctl --no-block start vodlocal-usb-unmount@%k.service"
 RULE
 chmod 0644 "$RULE_FILE"
 
@@ -239,18 +253,24 @@ udevadm control --reload-rules
 udevadm trigger --subsystem-match=block --action=add
 udevadm settle --timeout=10 2>/dev/null || true
 
-# Mount partisi USB yang sudah tercolok saat installer dijalankan. Ini tidak
-# bergantung pada event udev, jadi hasilnya bisa langsung diverifikasi.
+# Mount partisi USB yang sudah tercolok saat installer dijalankan. Deteksi
+# memakai TRAN disk induk (lsblk) dan helper mem-probe filesystem sendiri,
+# jadi tidak bergantung pada event udev maupun properti ID_*.
 while IFS= read -r dev; do
   [ -b "$dev" ] || continue
-  props="$(udevadm info --query=property --name="$dev" 2>/dev/null || true)"
-  printf '%s\n' "$props" | grep -qx 'ID_BUS=usb' || continue
-  fstype="$(printf '%s\n' "$props" | sed -n 's/^ID_FS_TYPE=//p')"
-  case "$fstype" in
-    exfat|vfat|ntfs|ntfs3) ;;
-    *) continue ;;
-  esac
-  systemctl start "vodlocal-usb-mount@${dev##*/}.service" || true
+  parent="$(lsblk -no PKNAME "$dev" 2>/dev/null | head -n 1 | tr -d '[:space:]' || true)"
+  if [ -n "$parent" ]; then
+    tran="$(lsblk -no TRAN "/dev/$parent" 2>/dev/null | head -n 1 | tr -d '[:space:]' || true)"
+  else
+    tran="$(lsblk -no TRAN "$dev" 2>/dev/null | head -n 1 | tr -d '[:space:]' || true)"
+  fi
+  [ "$tran" = "usb" ] || continue
+  printf 'Mounting %s ... ' "$dev"
+  if systemctl start "vodlocal-usb-mount@${dev##*/}.service"; then
+    echo "selesai"
+  else
+    echo "GAGAL"
+  fi
 done < <(lsblk -nrpo NAME 2>/dev/null)
 
 cat <<EOF
