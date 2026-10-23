@@ -26,7 +26,7 @@ MOUNT_UNIT="/etc/systemd/system/vodlocal-usb-mount@.service"
 UNMOUNT_UNIT="/etc/systemd/system/vodlocal-usb-unmount@.service"
 SERVICE_DROPIN="/etc/systemd/system/vodlocal.service.d/50-vodlocal-usb.conf"
 
-for cmd in mount umount mountpoint findmnt udevadm logger systemd-tmpfiles systemctl; do
+for cmd in mount umount mountpoint findmnt lsblk udevadm logger systemd-tmpfiles systemctl; do
   command -v "$cmd" >/dev/null 2>&1 || {
     echo "ERROR: '$cmd' tidak ditemukan; instal util-linux/udev" >&2
     exit 1
