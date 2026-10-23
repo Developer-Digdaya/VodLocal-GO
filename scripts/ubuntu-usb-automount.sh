@@ -239,6 +239,20 @@ udevadm control --reload-rules
 udevadm trigger --subsystem-match=block --action=add
 udevadm settle --timeout=10 2>/dev/null || true
 
+# Mount partisi USB yang sudah tercolok saat installer dijalankan. Ini tidak
+# bergantung pada event udev, jadi hasilnya bisa langsung diverifikasi.
+while IFS= read -r dev; do
+  [ -b "$dev" ] || continue
+  props="$(udevadm info --query=property --name="$dev" 2>/dev/null || true)"
+  printf '%s\n' "$props" | grep -qx 'ID_BUS=usb' || continue
+  fstype="$(printf '%s\n' "$props" | sed -n 's/^ID_FS_TYPE=//p')"
+  case "$fstype" in
+    exfat|vfat|ntfs|ntfs3) ;;
+    *) continue ;;
+  esac
+  systemctl start "vodlocal-usb-mount@${dev##*/}.service" || true
+done < <(lsblk -nrpo NAME 2>/dev/null)
+
 cat <<EOF
 
 Auto-mount USB terpasang.
@@ -249,6 +263,7 @@ Auto-mount USB terpasang.
   Unit unmount: $UNMOUNT_UNIT
   Rule        : $RULE_FILE
 
+Partisi USB yang sudah tercolok langsung di-mount oleh installer ini.
 Colokkan flashdisk/HDD. Mount read-write akan muncul sebagai:
   $MOUNT_ROOT/<uuid>
 
