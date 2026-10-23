@@ -750,17 +750,24 @@ sudo bash scripts/ubuntu-usb-automount.sh
 Skrip aman dijalankan ulang; file helper, udev rule, dan konfigurasi akan
 ditimpa dengan versi yang sama.
 
-Skrip memasang udev rule dan helper root. Setiap partisi USB dengan filesystem
-exFAT/VFAT/NTFS di-mount read-write ke:
+Skrip memasang udev rule, dua unit systemd template, dan helper root. Setiap
+partisi USB dengan filesystem exFAT/VFAT/NTFS di-mount read-write ke:
 
 ```text
 /run/media/vodlocal/<uuid>
 ```
 
-Mount memakai `noexec,nosuid,nodev` dan di-unmount saat disk dicabut. Skrip juga
-menambahkan `ReadWritePaths` untuk `/run/media/vodlocal` ke unit systemd agar
-service `vodlocal` dapat menulis paket export. Prasyarat Ubuntu: `exfatprogs` untuk
+Mount dijalankan oleh unit `vodlocal-usb-mount@.service` yang dipicu udev rule,
+bukan langsung dari `RUN` udev: `systemd-udevd` berjalan di mount namespace
+sendiri (`PrivateMounts=yes`), sehingga mount dari udev tidak terlihat oleh host
+maupun service `vodlocal`. Mount memakai `noexec,nosuid,nodev` dan di-unmount
+oleh `vodlocal-usb-unmount@.service` saat disk dicabut. Skrip juga menambahkan
+`ReadWritePaths` untuk `/run/media/vodlocal` ke unit systemd agar service
+`vodlocal` dapat menulis paket export. Prasyarat Ubuntu: `exfatprogs` untuk
 exFAT dan `ntfs-3g`/`ntfs3` untuk NTFS.
+
+Bila disk tidak muncul, cek `findmnt`, `journalctl -t vodlocal-usb`, dan
+`systemctl status 'vodlocal-usb-mount@*.service'`.
 
 Jika service `vodlocal` sudah berjalan sebelum installer dijalankan, restart
 sekali agar drop-in systemd terbaca:

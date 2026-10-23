@@ -22,9 +22,11 @@ RULE_FILE="/etc/udev/rules.d/99-vodlocal-usb.rules"
 TMPFILES_FILE="/etc/tmpfiles.d/vodlocal-usb.conf"
 MOUNT_HELPER="/usr/local/sbin/vodlocal-usb-mount"
 UNMOUNT_HELPER="/usr/local/sbin/vodlocal-usb-unmount"
+MOUNT_UNIT="/etc/systemd/system/vodlocal-usb-mount@.service"
+UNMOUNT_UNIT="/etc/systemd/system/vodlocal-usb-unmount@.service"
 SERVICE_DROPIN="/etc/systemd/system/vodlocal.service.d/50-vodlocal-usb.conf"
 
-for cmd in mount umount mountpoint findmnt udevadm logger systemd-tmpfiles; do
+for cmd in mount umount mountpoint findmnt udevadm logger systemd-tmpfiles systemctl; do
   command -v "$cmd" >/dev/null 2>&1 || {
     echo "ERROR: '$cmd' tidak ditemukan; instal util-linux/udev" >&2
     exit 1
@@ -190,10 +192,35 @@ rmdir "$MOUNTPOINT" 2>/dev/null || true
 HELPER
 chmod 0755 "$UNMOUNT_HELPER"
 
+# Mount tidak boleh dijalankan langsung dari RUN{program}: systemd-udevd berjalan
+# di mount namespace sendiri (PrivateMounts=yes), sehingga hasil mount tidak
+# terlihat oleh host maupun service vodlocal. Unit template berikut dijalankan
+# oleh systemd di namespace host.
+cat > "$MOUNT_UNIT" <<'UNIT'
+[Unit]
+Description=VodLocal mount USB partition /dev/%i
+After=dev-%i.device
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vodlocal-usb-mount /dev/%i
+UNIT
+chmod 0644 "$MOUNT_UNIT"
+
+cat > "$UNMOUNT_UNIT" <<'UNIT'
+[Unit]
+Description=VodLocal unmount USB partition /dev/%i
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vodlocal-usb-unmount /dev/%i
+UNIT
+chmod 0644 "$UNMOUNT_UNIT"
+
 # Semua partisi USB; helper sendiri yang menolak filesystem yang tidak didukung.
 cat > "$RULE_FILE" <<'RULE'
-ACTION=="add", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", RUN{program}+="/usr/local/sbin/vodlocal-usb-mount /dev/%k"
-ACTION=="remove", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", RUN{program}+="/usr/local/sbin/vodlocal-usb-unmount %E{ID_FS_UUID} /dev/%k"
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", ENV{ID_FS_TYPE}=="exfat|vfat|ntfs|ntfs3", RUN{program}+="/bin/systemctl --no-block start vodlocal-usb-mount@%k.service"
+ACTION=="remove", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", RUN{program}+="/bin/systemctl --no-block start vodlocal-usb-unmount@%k.service"
 RULE
 chmod 0644 "$RULE_FILE"
 
@@ -207,20 +234,20 @@ EOF
   chmod 0644 "$SERVICE_DROPIN"
 fi
 
+systemctl daemon-reload
 udevadm control --reload-rules
 udevadm trigger --subsystem-match=block --action=add
-
-if [ -f /etc/systemd/system/vodlocal.service ]; then
-  systemctl daemon-reload
-fi
+udevadm settle --timeout=10 2>/dev/null || true
 
 cat <<EOF
 
 Auto-mount USB terpasang.
-  Mount root : $MOUNT_ROOT
-  App user   : $APP_USER
-  Helper     : $MOUNT_HELPER
-  Rule       : $RULE_FILE
+  Mount root  : $MOUNT_ROOT
+  App user    : $APP_USER
+  Helper      : $MOUNT_HELPER
+  Unit mount  : $MOUNT_UNIT
+  Unit unmount: $UNMOUNT_UNIT
+  Rule        : $RULE_FILE
 
 Colokkan flashdisk/HDD. Mount read-write akan muncul sebagai:
   $MOUNT_ROOT/<uuid>
@@ -231,7 +258,8 @@ drop-in ReadWritePaths ikut terpasang:
   sudo systemctl restart vodlocal
 
 Jika drive tidak terlihat di panel admin:
-  - cek: findmnt -rn -S /dev/sdX -o TARGET
-  - cek log: journalctl -t vodlocal-usb -n 50 --no-pager
+  - cek mount: findmnt -rn -S /dev/sdX -o TARGET
+  - cek log helper: journalctl -t vodlocal-usb -n 50 --no-pager
+  - cek unit: systemctl status 'vodlocal-usb-mount@*.service'
   - cek service: systemctl show vodlocal -p ReadWritePaths
 EOF
