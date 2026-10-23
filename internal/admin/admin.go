@@ -45,7 +45,7 @@ const (
 	onlineWindow = 5 * time.Minute
 
 	// defaultPerPage dan maxPerPage mengikuti docs/api-spec.md §4.
-	defaultPerPage = 50
+	defaultPerPage = 10
 	maxPerPage     = 200
 
 	// maxQueryLength adalah batas panjang pencarian di panel admin (§4.1).
