@@ -864,7 +864,8 @@
       meta.className = 'small muted';
       meta.textContent = item.category + ' · ' + item.generation_label +
         ' · ' + item.episodes_done + '/' + item.episodes_total + ' episode' +
-        ' · ' + bytesLabel(item.bytes);
+        ' · ' + bytesLabel(item.bytes) +
+        (item.copies > 1 ? ' · ada di ' + item.copies + ' batch (hanya sekali diexport)' : '');
       info.appendChild(meta);
       label.appendChild(checkbox);
       if (item.poster_url) {

@@ -127,6 +127,19 @@ func TestExportImportRoundTrip(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(mediaRoot, label, filepath.FromSlash(playlist))); err != nil {
 		t.Fatalf("playlist import tidak ada: %v", err)
 	}
+
+	// Judul yang sama kini ada di dua generation, tetapi daftar export harus
+	// tetap satu baris agar tidak bisa dipilih/diexport dua kali.
+	items, total, err = svc.ListLocalContent(ctx, 1, 30)
+	if err != nil {
+		t.Fatalf("ListLocalContent setelah import: %v", err)
+	}
+	if total != 1 || len(items) != 1 {
+		t.Fatalf("local content setelah import = %d/%d, mau 1/1", len(items), total)
+	}
+	if items[0].Copies != 2 || items[0].GenerationLabel != label {
+		t.Fatalf("item = %+v, mau copies=2 dan batch terbaru %s", items[0], label)
+	}
 }
 
 func TestImportRejectsCorruptFile(t *testing.T) {

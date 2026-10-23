@@ -161,6 +161,9 @@ type LocalContent struct {
 	EpisodesTotal   int64  `json:"episodes_total"`
 	Renditions      int64  `json:"renditions"`
 	Bytes           int64  `json:"bytes"`
+	// Copies adalah jumlah generation yang memiliki judul yang sama. Hanya
+	// generation terbaru yang ditampilkan pada daftar export.
+	Copies int `json:"copies"`
 }
 
 // ListLocalContent returns completed generation items that can be exported.
@@ -177,24 +180,42 @@ func (s *Service) ListLocalContent(ctx context.Context, page, perPage int) ([]Lo
 	}
 
 	var total int64
-	if err := s.store.Read().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM generation_items WHERE status = 'done'`).Scan(&total); err != nil {
+	if err := s.store.Read().QueryRowContext(ctx, `
+SELECT COUNT(*) FROM (
+  SELECT 1 FROM generation_items
+   WHERE status = 'done'
+   GROUP BY provider_id, series_external_id
+)`).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
+	// Satu judul hanya boleh muncul sekali: generation terbaru menang. Ini
+	// mencegah judul yang sama dipilih dari dua batch lalu diexport dua kali.
 	rows, err := s.store.Read().QueryContext(ctx, `
+WITH done_items AS (
+  SELECT gi.*,
+         ROW_NUMBER() OVER (
+           PARTITION BY gi.provider_id, gi.series_external_id
+           ORDER BY gi.id DESC
+         ) AS rn
+    FROM generation_items gi
+   WHERE gi.status = 'done'
+)
 SELECT gi.id, gi.generation_id, g.label, COALESCE(pr.code, ''), gi.category,
        gi.series_external_id, gi.series_title, gi.status,
        COALESCE(t.poster_path, ''), gi.episodes_done, gi.total_episodes,
+       (SELECT COUNT(*) FROM done_items d
+         WHERE d.provider_id = gi.provider_id
+           AND d.series_external_id = gi.series_external_id) AS copies,
        COUNT(r.id), COALESCE(SUM(r.total_bytes), 0)
-  FROM generation_items gi
+  FROM done_items gi
   JOIN generations g ON g.id = gi.generation_id
   JOIN providers pr ON pr.id = gi.provider_id
   LEFT JOIN titles t ON t.provider_id = gi.provider_id AND t.external_id = gi.series_external_id
   LEFT JOIN playables p ON p.title_id = t.id
   LEFT JOIN renditions r ON r.playable_id = p.id
        AND r.generation_id = gi.generation_id AND r.status = 'ready'
- WHERE gi.status = 'done'
+ WHERE gi.rn = 1
  GROUP BY gi.id
  ORDER BY gi.id DESC
  LIMIT ? OFFSET ?`, perPage, (page-1)*perPage)
@@ -211,7 +232,8 @@ SELECT gi.id, gi.generation_id, g.label, COALESCE(pr.code, ''), gi.category,
 		)
 		if err := rows.Scan(&item.ItemID, &item.GenerationID, &item.GenerationLabel,
 			&item.Provider, &item.Category, &item.ExternalID, &item.Title, &item.Status,
-			&poster, &item.EpisodesDone, &item.EpisodesTotal, &item.Renditions, &item.Bytes); err != nil {
+			&poster, &item.EpisodesDone, &item.EpisodesTotal, &item.Copies,
+			&item.Renditions, &item.Bytes); err != nil {
 			return nil, 0, err
 		}
 		if poster != "" {
