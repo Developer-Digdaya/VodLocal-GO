@@ -22,8 +22,10 @@ import (
 	"vodlocal/internal/admin"
 	"vodlocal/internal/catalog"
 	"vodlocal/internal/httpserver"
+	"vodlocal/internal/mediafs"
 	"vodlocal/internal/store"
 	"vodlocal/internal/syncjob"
+	"vodlocal/internal/transfer"
 )
 
 // Kredensial admin yang dipakai seluruh test.
@@ -44,6 +46,7 @@ type fixture struct {
 	sessions *httpserver.SessionManager
 	syncer   *stubSyncer
 	media    *stubMedia
+	transfer *transfer.Service
 	lister   *stubLister
 	ingest   *stubIngest
 	// mediaRoot dan artworkRoot adalah direktori sementara yang dipakai uji
@@ -256,6 +259,20 @@ func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 	f.media = &stubMedia{root: f.mediaRoot}
 	f.lister = &stubLister{}
 	f.ingest = &stubIngest{}
+	mediaManager, err := mediafs.New(f.mediaRoot)
+	if err != nil {
+		t.Fatalf("mediafs.New: %v", err)
+	}
+	transferSvc, err := transfer.New(transfer.Config{
+		Store:  st,
+		Media:  mediaManager,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Now:    func() time.Time { return f.now },
+	})
+	if err != nil {
+		t.Fatalf("transfer.New: %v", err)
+	}
+	f.transfer = transferSvc
 
 	cfg := admin.Config{
 		Store:       st,
@@ -268,6 +285,7 @@ func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 		Lister:      f.lister,
 		Ingest:      f.ingest,
 		ArtworkRoot: f.artworkRoot,
+		Transfer:    f.transfer,
 	}
 	for _, opt := range opts {
 		opt(&cfg)

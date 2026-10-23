@@ -32,6 +32,7 @@ import (
 	"vodlocal/internal/httpserver"
 	"vodlocal/internal/store"
 	"vodlocal/internal/syncjob"
+	"vodlocal/internal/transfer"
 )
 
 //go:embed assets/*
@@ -122,6 +123,9 @@ type Config struct {
 	// menunjuk katalog yang sudah dihapus. Opsional: bila kosong, artwork tidak
 	// disentuh.
 	ArtworkRoot string
+	// Transfer menangani export/import paket HDD; nil berarti fitur transfer
+	// tidak dipasang.
+	Transfer *transfer.Service
 }
 
 // Admin adalah panel administrasi. Nilainya aman dipakai banyak goroutine.
@@ -141,6 +145,7 @@ type Admin struct {
 	// artworkRoot adalah akar artwork yang dikosongkan aksi "Remove all batch";
 	// string kosong berarti fitur tersebut tidak menyentuh artwork.
 	artworkRoot string
+	transfer    *transfer.Service
 	templates   map[string]*template.Template
 
 	// content menyimpan hasil ListSeries terakhir agar slug yang dipilih pada
@@ -195,6 +200,7 @@ func New(cfg Config) (*Admin, error) {
 		lister:      cfg.Lister,
 		ingest:      cfg.Ingest,
 		artworkRoot: cfg.ArtworkRoot,
+		transfer:    cfg.Transfer,
 		templates:   templates,
 		content:     newContentCache(),
 		flashes:     make(map[string]flash),
@@ -265,6 +271,14 @@ func (a *Admin) Mount(r chi.Router) {
 		pr.Get("/storage", a.handleStorage)
 		pr.With(csrf).Post("/storage/items/{id}/delete", a.handleStorageItemDelete)
 		pr.With(csrf).Post("/storage/generations/{id}/delete", a.handleStorageDelete)
+
+		if a.transfer != nil {
+			pr.With(csrf).Get("/transfer/drives", a.handleTransferDrives)
+			pr.With(csrf).Get("/transfer/packages", a.handleTransferPackages)
+			pr.With(csrf).Get("/transfer/local-content", a.handleTransferLocalContent)
+			pr.With(csrf).Post("/transfer/export", a.handleTransferExport)
+			pr.With(csrf).Post("/transfer/import", a.handleTransferImport)
+		}
 
 		pr.Get("/settings", a.handleSettingsForm)
 		pr.With(csrf).Post("/settings", a.handleSettingsSave)

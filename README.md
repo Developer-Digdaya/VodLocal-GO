@@ -588,6 +588,23 @@ tidak menghapus, tidak menyembunyikan, dan tidak memindahkan konten batch lama.
   dihapus, dan generation tetap di-commit parsial selama ada minimal satu rendition
   `ready`. Bila tidak ada, generation/run ditandai gagal.
 
+### 10.4 Import/Export HDD
+
+Konten yang sudah diunduh dapat diexport ke HDD dan diimport ke server bus lain
+melalui panel `/sync`:
+
+- **Export ke HDD** memilih drive tujuan dan konten lokal. Paket ditulis ke
+  `<drive>/VOD-EXPORT/<package-id>/` berisi `manifest.json` + file media.
+- **List Content → Offline (HDD)** memindai paket pada drive yang sudah
+  di-mount. Pilih konten lalu Import.
+- Import membuat generation baru, menyalin ke staging, memverifikasi SHA-256,
+  lalu menerbitkannya secara atomik. Batch lama tidak dihapus.
+- HDD transport memakai **exFAT**. Di Linux, mount HDD read-only (misalnya
+  `/mnt/vod-export`): aplikasi tidak menjalankan `mount` sebagai root; tombol
+  Refresh hanya memindai mount point.
+- Detail format dan task list ada di
+  [`docs/import-export.md`](docs/import-export.md).
+
 ---
 
 ## 11. Ingest Konten

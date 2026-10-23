@@ -27,6 +27,7 @@ import (
 	"vodlocal/internal/notify"
 	"vodlocal/internal/store"
 	"vodlocal/internal/syncjob"
+	"vodlocal/internal/transfer"
 )
 
 const version = "0.1.0"
@@ -130,8 +131,21 @@ func run() error {
 		return err
 	}
 
+	transferSvc, err := transfer.New(transfer.Config{
+		Store:  st,
+		Media:  media,
+		Logger: logger,
+		Now:    time.Now,
+	})
+	if err != nil {
+		return err
+	}
+
 	if err := syncer.Recover(ctx); err != nil {
 		logger.Warn("pemulihan setelah boot gagal", "err", err)
+	}
+	if err := transferSvc.Recover(ctx); err != nil {
+		logger.Warn("pemulihan transfer setelah boot gagal", "err", err)
 	}
 
 	// Sekali saat boot: buang playable/episode/title yang medianya sudah tidak
@@ -158,6 +172,7 @@ func run() error {
 		// ArtworkRoot dipakai aksi "Remove all batch" untuk mengosongkan cache
 		// artwork setelah katalog dihapus.
 		ArtworkRoot: cfg.ArtworkRoot,
+		Transfer:    transferSvc,
 		StorageUsage: func() (int64, int64, error) {
 			return diskUsage(cfg.MediaRoot)
 		},

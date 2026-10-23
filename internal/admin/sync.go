@@ -504,6 +504,9 @@ type syncListData struct {
 	Runs     []syncRunView
 	Active   *syncRunView
 	Statuses []string
+	// TransferEnabled memasang tombol export/offline hanya bila layanan
+	// transfer tersedia pada server ini.
+	TransferEnabled bool
 }
 
 // syncListData menyiapkan data halaman /sync.
@@ -511,10 +514,11 @@ func (a *Admin) syncListData(w http.ResponseWriter, r *http.Request, errMessage 
 	ctx := r.Context()
 	values := r.URL.Query()
 	data := syncListData{
-		base:     a.base(w, r, "Sinkronisasi", "sync"),
-		Q:        normalizeQuery(queryGet(values, "q")),
-		Status:   strings.TrimSpace(queryGet(values, "status")),
-		Statuses: syncStatuses,
+		base:            a.base(w, r, "Sinkronisasi", "sync"),
+		Q:               normalizeQuery(queryGet(values, "q")),
+		Status:          strings.TrimSpace(queryGet(values, "status")),
+		Statuses:        syncStatuses,
+		TransferEnabled: a.transfer != nil,
 	}
 	if !containsString(syncStatuses, data.Status) {
 		data.Status = ""
@@ -766,15 +770,20 @@ func (a *Admin) handleSyncCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if a.syncer == nil {
-		a.flashTo(r, "error", "Sinkronisasi tidak tersedia pada server ini.")
-		http.Redirect(w, r, fmt.Sprintf("/sync/%d", id), http.StatusSeeOther)
-		return
+	var cancelErr error
+	if a.syncer != nil {
+		cancelErr = a.syncer.Cancel(id)
+	} else {
+		cancelErr = errors.New("sinkronisasi tidak tersedia")
 	}
-
-	if err := a.syncer.Cancel(id); err != nil {
-		a.log.Warn("admin: gagal membatalkan sinkronisasi", "run_id", id, "err", err)
-		a.flashTo(r, "error", fmt.Sprintf("Sinkronisasi #%d tidak dapat dibatalkan: %v", id, err))
+	if cancelErr != nil && a.transfer != nil {
+		if err := a.transfer.Cancel(id); err == nil {
+			cancelErr = nil
+		}
+	}
+	if cancelErr != nil {
+		a.log.Warn("admin: gagal membatalkan sinkronisasi", "run_id", id, "err", cancelErr)
+		a.flashTo(r, "error", fmt.Sprintf("Sinkronisasi #%d tidak dapat dibatalkan: %v", id, cancelErr))
 		http.Redirect(w, r, fmt.Sprintf("/sync/%d", id), http.StatusSeeOther)
 		return
 	}

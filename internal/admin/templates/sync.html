@@ -11,7 +11,10 @@
   · <a href="/sync/{{.Active.ID}}">detail</a></p>
 {{end}}
 
-<p><button type="button" id="open-content">List Content</button></p>
+<p>
+  <button type="button" id="open-content">List Content</button>
+  {{if .TransferEnabled}}<button type="button" class="secondary" id="open-export">Export ke HDD</button>{{end}}
+</p>
 
 <h2>Riwayat</h2>
 <p class="muted small">
@@ -91,6 +94,16 @@
     <button type="button" class="secondary" id="close-content" aria-label="Tutup">×</button>
   </div>
 
+  <div class="tabs" role="tablist" aria-label="Sumber konten" id="content-source">
+    {{if .TransferEnabled}}
+    <button type="button" class="tab active" data-source="online" role="tab" aria-selected="true">Online</button>
+    <button type="button" class="tab" data-source="offline" role="tab" aria-selected="false">Offline (HDD)</button>
+    {{else}}
+    <button type="button" class="tab active" data-source="online" role="tab" aria-selected="true">Online</button>
+    {{end}}
+  </div>
+
+  <div id="online-panel">
   <div class="tabs" role="tablist" aria-label="Kategori konten">
     <button type="button" class="tab active" id="tab-movie" role="tab"
             data-category="movie" aria-selected="true" aria-controls="content-panel">Movie</button>
@@ -113,6 +126,22 @@
       </div>
     </section>
   </div>
+  </div>
+
+  <div class="dialog-body" id="offline-panel" hidden>
+    <p class="flash error" id="offline-error" hidden></p>
+    <div class="filters">
+      <div>
+        <label for="offline-drive">Drive / mount point</label>
+        <select id="offline-drive"></select>
+      </div>
+      <div class="sync-actions">
+        <button type="button" class="secondary" id="offline-refresh">Refresh</button>
+        <span class="small muted" id="offline-status"></span>
+      </div>
+    </div>
+    <div id="offline-list"><p class="muted">Pilih drive lalu tekan Refresh.</p></div>
+  </div>
 
   <div class="dialog-foot">
     <button type="button" class="danger" id="purge-content" title="Hapus semua unduhan dan katalog">Hapus semua unduhan</button>
@@ -121,6 +150,35 @@
     <button type="button" class="secondary" id="cancel-content">Batal</button>
   </div>
 </dialog>
+
+{{if .TransferEnabled}}
+<dialog id="export-dialog" class="modal" aria-labelledby="export-dialog-title">
+  <div class="dialog-head">
+    <strong id="export-dialog-title">Export ke HDD</strong>
+    <button type="button" class="secondary" id="close-export" aria-label="Tutup">×</button>
+  </div>
+  <div class="dialog-body">
+    <p class="flash error" id="export-error" hidden></p>
+    <div class="filters">
+      <div>
+        <label for="export-drive">Drive tujuan</label>
+        <select id="export-drive"></select>
+      </div>
+      <div class="sync-actions">
+        <button type="button" class="secondary" id="export-refresh">Refresh</button>
+        <span class="small muted" id="export-status"></span>
+      </div>
+    </div>
+    <p class="muted small">Pilih konten yang sudah diunduh. Paket ditulis ke folder VOD-EXPORT di drive tujuan.</p>
+    <div id="export-list"><p class="muted">Memuat konten lokal…</p></div>
+  </div>
+  <div class="dialog-foot">
+    <span class="spacer"></span>
+    <button type="button" id="export-submit" disabled>Export (0)</button>
+    <button type="button" class="secondary" id="cancel-export">Batal</button>
+  </div>
+</dialog>
+{{end}}
 
 <script>
 (function () {
@@ -141,6 +199,18 @@
   var indicator = document.getElementById('page-indicator');
   var saveButton = document.getElementById('save-selection');
   var purgeButton = document.getElementById('purge-content');
+  var sourceTabs = Array.prototype.slice.call(dialog.querySelectorAll('.tab[data-source]'));
+  var onlinePanel = document.getElementById('online-panel');
+  var offlinePanel = document.getElementById('offline-panel');
+  var offlineDrive = document.getElementById('offline-drive');
+  var offlineRefresh = document.getElementById('offline-refresh');
+  var offlineStatus = document.getElementById('offline-status');
+  var offlineList = document.getElementById('offline-list');
+  var offlineError = document.getElementById('offline-error');
+
+  var currentSource = 'online';
+  var offlineSelected = new Map();
+  var offlinePackages = [];
 
   // currentCategory adalah tab yang sedang aktif; tab Movie dipakai saat modal
   // dibuka.
@@ -167,8 +237,15 @@
   }
 
   function updateSaveButton() {
+    if (currentSource === 'offline') {
+      saveButton.textContent = 'Import pilihan (' + offlineSelected.size + ')';
+      saveButton.disabled = offlineSelected.size === 0;
+      if (purgeButton) { purgeButton.hidden = true; }
+      return;
+    }
     saveButton.textContent = 'Simpan pilihan (' + selected.size + ')';
     saveButton.disabled = selected.size === 0;
+    if (purgeButton) { purgeButton.hidden = false; }
   }
 
   function showError(message) {
@@ -373,6 +450,7 @@
     } else {
       dialog.setAttribute('open', 'open');
     }
+    setSource('online');
     selectCategory('movie');
   }
 
@@ -384,7 +462,199 @@
     }
   }
 
+  function fetchJSON(url) {
+    return window.fetch(url, {
+      headers: { 'Accept': 'application/json' },
+      credentials: 'same-origin'
+    }).then(function (response) {
+      return response.json().then(function (body) {
+        if (!response.ok || body.code !== 0) {
+          throw new Error(body.msg || 'Permintaan gagal.');
+        }
+        return body.data || {};
+      });
+    });
+  }
+
+  function bytesLabel(n) {
+    if (!n) { return '0 B'; }
+    var units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    var i = 0;
+    var v = n;
+    while (v >= 1024 && i < units.length - 1) { v = v / 1024; i++; }
+    return (i === 0 ? v : v.toFixed(1)) + ' ' + units[i];
+  }
+
+  function showOfflineError(message) {
+    offlineError.textContent = message;
+    offlineError.hidden = false;
+  }
+
+  function clearOfflineError() {
+    offlineError.textContent = '';
+    offlineError.hidden = true;
+  }
+
+  function setSource(source) {
+    currentSource = source;
+    sourceTabs.forEach(function (tab) {
+      var active = tab.getAttribute('data-source') === source;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-selected', String(active));
+    });
+    onlinePanel.hidden = source !== 'online';
+    offlinePanel.hidden = source !== 'offline';
+    clearOfflineError();
+    updateSaveButton();
+    if (source === 'offline') { loadOfflineDrives(); }
+  }
+
+  function loadOfflineDrives() {
+    offlineStatus.textContent = 'Memuat drive…';
+    fetchJSON('/transfer/drives').then(function (data) {
+      var drives = data.drives || [];
+      offlineDrive.textContent = '';
+      if (!drives.length) {
+        offlineStatus.textContent = 'Tidak ada drive ter-mount.';
+        offlineList.textContent = '';
+        placeholderOffline('Colokkan HDD lalu tekan Refresh.');
+        return;
+      }
+      drives.forEach(function (drive) {
+        var option = document.createElement('option');
+        option.value = drive.path;
+        option.textContent = (drive.label ? drive.label + ' — ' : '') + drive.path +
+          ' · ' + bytesLabel(drive.free_bytes) + ' kosong';
+        offlineDrive.appendChild(option);
+      });
+      offlineStatus.textContent = drives.length + ' drive ditemukan.';
+      loadOfflinePackages();
+    }).catch(function (err) {
+      offlineStatus.textContent = '';
+      showOfflineError(err.message);
+    });
+  }
+
+  function placeholderOffline(text) {
+    var p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = text;
+    offlineList.appendChild(p);
+  }
+
+  function loadOfflinePackages() {
+    var drive = offlineDrive.value;
+    if (!drive) { return; }
+    offlineSelected.clear();
+    updateSaveButton();
+    clearOfflineError();
+    offlineStatus.textContent = 'Memindai paket…';
+    fetchJSON('/transfer/packages?drive=' + encodeURIComponent(drive)).then(function (data) {
+      offlinePackages = data.packages || [];
+      offlineStatus.textContent = offlinePackages.length + ' paket ditemukan.';
+      renderOfflinePackages();
+    }).catch(function (err) {
+      offlineStatus.textContent = '';
+      showOfflineError(err.message);
+    });
+  }
+
+  function renderOfflinePackages() {
+    offlineList.textContent = '';
+    if (!offlinePackages.length) {
+      placeholderOffline('Tidak ada paket VOD-EXPORT di drive ini.');
+      return;
+    }
+    offlinePackages.forEach(function (pkg) {
+      var article = document.createElement('article');
+      article.className = 'card';
+      var head = document.createElement('div');
+      var strong = document.createElement('strong');
+      strong.textContent = pkg.package_id || pkg.path;
+      head.appendChild(strong);
+      var meta = document.createElement('div');
+      meta.className = 'small muted';
+      meta.textContent = (pkg.created_at || '') + ' · ' + bytesLabel(pkg.total_bytes);
+      head.appendChild(meta);
+      article.appendChild(head);
+
+      if (pkg.error) {
+        var err = document.createElement('p');
+        err.className = 'flash error';
+        err.textContent = pkg.error;
+        article.appendChild(err);
+      } else {
+        var list = document.createElement('div');
+        list.className = 'content-grid';
+        (pkg.items || []).forEach(function (item) {
+          var key = pkg.path + '\x00' + item.index;
+          var label = document.createElement('label');
+          label.className = 'content-item';
+          var checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = offlineSelected.has(key);
+          checkbox.addEventListener('change', function () {
+            if (checkbox.checked) {
+              offlineSelected.set(key, { package: pkg.path, index: item.index });
+            } else {
+              offlineSelected.delete(key);
+            }
+            updateSaveButton();
+          });
+          var info = document.createElement('span');
+          info.className = 'content-info';
+          var title = document.createElement('strong');
+          title.textContent = item.title;
+          info.appendChild(title);
+          var detail = document.createElement('span');
+          detail.className = 'small muted';
+          detail.textContent = (item.category || item.kind) +
+            (item.episode_count ? ' · ' + item.episode_count + ' episode' : '') +
+            ' · ' + bytesLabel(item.bytes);
+          info.appendChild(detail);
+          label.appendChild(checkbox);
+          label.appendChild(info);
+          list.appendChild(label);
+        });
+        article.appendChild(list);
+      }
+      offlineList.appendChild(article);
+    });
+  }
+
+  function importOffline() {
+    if (!offlineSelected.size) { return; }
+    var packagePath = '';
+    var indexes = [];
+    offlineSelected.forEach(function (value) {
+      if (packagePath && packagePath !== value.package) {
+        showOfflineError('Pilih konten dari satu paket saja dalam satu kali import.');
+        throw new Error('mixed packages');
+      }
+      packagePath = value.package;
+      indexes.push(value.index);
+    });
+    var form = document.createElement('form');
+    form.method = 'post';
+    form.action = '/transfer/import';
+    var csrf = document.createElement('input');
+    csrf.type = 'hidden'; csrf.name = '_csrf'; csrf.value = csrfToken();
+    form.appendChild(csrf);
+    var packageInput = document.createElement('input');
+    packageInput.type = 'hidden'; packageInput.name = 'package'; packageInput.value = packagePath;
+    form.appendChild(packageInput);
+    var itemsInput = document.createElement('input');
+    itemsInput.type = 'hidden'; itemsInput.name = 'items'; itemsInput.value = JSON.stringify(indexes);
+    form.appendChild(itemsInput);
+    document.body.appendChild(form);
+    form.submit();
+  }
+
   function saveSelection() {
+    if (currentSource === 'offline') {
+      try { importOffline(); } catch (e) { /* error already shown */ }
+      return;
+    }
     if (!selected.size) { return; }
 
     var form = document.createElement('form');
@@ -454,6 +724,17 @@
       selectCategory(tab.getAttribute('data-category'));
     });
   });
+  sourceTabs.forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      setSource(tab.getAttribute('data-source'));
+    });
+  });
+  if (offlineRefresh) {
+    offlineRefresh.addEventListener('click', loadOfflineDrives);
+  }
+  if (offlineDrive) {
+    offlineDrive.addEventListener('change', loadOfflinePackages);
+  }
   prevButton.addEventListener('click', function () {
     if (currentPage > 1) { loadPage(currentPage - 1); }
   });
@@ -462,7 +743,163 @@
   });
 
   activateTab('movie');
+  setSource('online');
   updateSaveButton();
 }());
 </script>
+
+{{if .TransferEnabled}}
+<script>
+(function () {
+  'use strict';
+  var dialog = document.getElementById('export-dialog');
+  if (!dialog) { return; }
+  var openButton = document.getElementById('open-export');
+  var closeButton = document.getElementById('close-export');
+  var cancelButton = document.getElementById('cancel-export');
+  var driveSelect = document.getElementById('export-drive');
+  var refreshButton = document.getElementById('export-refresh');
+  var statusElement = document.getElementById('export-status');
+  var listElement = document.getElementById('export-list');
+  var errorElement = document.getElementById('export-error');
+  var submitButton = document.getElementById('export-submit');
+  var selected = new Set();
+  var content = [];
+
+  function bytesLabel(n) {
+    if (!n) { return '0 B'; }
+    var units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    var i = 0, v = n;
+    while (v >= 1024 && i < units.length - 1) { v = v / 1024; i++; }
+    return (i === 0 ? v : v.toFixed(1)) + ' ' + units[i];
+  }
+  function csrf() {
+    var input = document.querySelector('input[name="_csrf"]');
+    return input ? input.value : '';
+  }
+  function showError(message) {
+    errorElement.textContent = message;
+    errorElement.hidden = false;
+  }
+  function clearError() {
+    errorElement.textContent = '';
+    errorElement.hidden = true;
+  }
+  function updateButton() {
+    submitButton.textContent = 'Export (' + selected.size + ')';
+    submitButton.disabled = selected.size === 0 || !driveSelect.value;
+  }
+  function fetchJSON(url) {
+    return window.fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+      .then(function (response) {
+        return response.json().then(function (body) {
+          if (!response.ok || body.code !== 0) { throw new Error(body.msg || 'Permintaan gagal.'); }
+          return body.data || {};
+        });
+      });
+  }
+  function loadDrives() {
+    statusElement.textContent = 'Memuat drive…';
+    return fetchJSON('/transfer/drives').then(function (data) {
+      var drives = (data.drives || []).filter(function (drive) { return drive.writable; });
+      driveSelect.textContent = '';
+      drives.forEach(function (drive) {
+        var option = document.createElement('option');
+        option.value = drive.path;
+        option.textContent = (drive.label ? drive.label + ' — ' : '') + drive.path +
+          ' · ' + bytesLabel(drive.free_bytes) + ' kosong';
+        driveSelect.appendChild(option);
+      });
+      statusElement.textContent = drives.length ? drives.length + ' drive ditemukan.' : 'Tidak ada drive.';
+      updateButton();
+    }).catch(function (err) {
+      statusElement.textContent = '';
+      showError(err.message);
+    });
+  }
+  function renderContent() {
+    listElement.textContent = '';
+    if (!content.length) {
+      var empty = document.createElement('p');
+      empty.className = 'muted';
+      empty.textContent = 'Belum ada konten yang selesai diunduh.';
+      listElement.appendChild(empty);
+      return;
+    }
+    var grid = document.createElement('div');
+    grid.className = 'content-grid';
+    content.forEach(function (item) {
+      var label = document.createElement('label');
+      label.className = 'content-item';
+      var checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = selected.has(item.item_id);
+      checkbox.addEventListener('change', function () {
+        if (checkbox.checked) { selected.add(item.item_id); } else { selected.delete(item.item_id); }
+        updateButton();
+      });
+      var info = document.createElement('span');
+      info.className = 'content-info';
+      var title = document.createElement('strong');
+      title.textContent = item.title;
+      info.appendChild(title);
+      var meta = document.createElement('span');
+      meta.className = 'small muted';
+      meta.textContent = item.category + ' · ' + item.generation_label +
+        ' · ' + item.episodes_done + '/' + item.episodes_total + ' episode' +
+        ' · ' + bytesLabel(item.bytes);
+      info.appendChild(meta);
+      label.appendChild(checkbox);
+      label.appendChild(info);
+      grid.appendChild(label);
+    });
+    listElement.appendChild(grid);
+  }
+  function loadContent() {
+    return fetchJSON('/transfer/local-content').then(function (data) {
+      content = data.items || [];
+      renderContent();
+    }).catch(function (err) { showError(err.message); });
+  }
+  function openDialog() {
+    selected.clear();
+    updateButton();
+    clearError();
+    if (typeof dialog.showModal === 'function') { dialog.showModal(); } else { dialog.setAttribute('open', 'open'); }
+    loadDrives();
+    loadContent();
+  }
+  function closeDialog() {
+    if (typeof dialog.close === 'function') { dialog.close(); } else { dialog.removeAttribute('open'); }
+  }
+  function submit() {
+    if (!selected.size || !driveSelect.value) { return; }
+    var form = document.createElement('form');
+    form.method = 'post';
+    form.action = '/transfer/export';
+    var token = document.createElement('input');
+    token.type = 'hidden'; token.name = '_csrf'; token.value = csrf(); form.appendChild(token);
+    var destination = document.createElement('input');
+    destination.type = 'hidden'; destination.name = 'destination'; destination.value = driveSelect.value; form.appendChild(destination);
+    var items = document.createElement('input');
+    items.type = 'hidden'; items.name = 'items'; items.value = JSON.stringify(Array.from(selected)); form.appendChild(items);
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  if (openButton) { openButton.addEventListener('click', openDialog); }
+  if (closeButton) { closeButton.addEventListener('click', closeDialog); }
+  if (cancelButton) { cancelButton.addEventListener('click', closeDialog); }
+  if (refreshButton) {
+    refreshButton.addEventListener('click', function () {
+      clearError();
+      loadDrives();
+      loadContent();
+    });
+  }
+  if (driveSelect) { driveSelect.addEventListener('change', updateButton); }
+  if (submitButton) { submitButton.addEventListener('click', submit); }
+}());
+</script>
+{{end}}
 {{end}}
