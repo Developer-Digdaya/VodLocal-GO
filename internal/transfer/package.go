@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -140,13 +141,17 @@ type PackageInfo struct {
 
 // PackageItem is one selectable title inside an offline package.
 type PackageItem struct {
-	Index        int    `json:"index"`
-	Provider     string `json:"provider"`
-	Category     string `json:"category"`
-	Title        string `json:"title"`
-	Kind         string `json:"kind"`
-	EpisodeCount int    `json:"episode_count"`
-	Bytes        int64  `json:"bytes"`
+	Index              int    `json:"index"`
+	Provider           string `json:"provider"`
+	ExternalID         string `json:"external_id"`
+	Category           string `json:"category"`
+	Title              string `json:"title"`
+	Kind               string `json:"kind"`
+	EpisodeCount       int    `json:"episode_count"`
+	Bytes              int64  `json:"bytes"`
+	PosterPath         string `json:"poster_path,omitempty"`
+	Existing           bool   `json:"existing"`
+	ExistingGeneration string `json:"existing_generation,omitempty"`
 }
 
 // ReadManifest reads and validates manifest.json in packageDir.
@@ -315,15 +320,31 @@ func ScanPackages(root string) ([]PackageInfo, error) {
 			info.Items = append(info.Items, PackageItem{
 				Index:        i,
 				Provider:     item.Provider,
+				ExternalID:   item.Title.ExternalID,
 				Category:     item.Category,
 				Title:        item.Title.Name,
 				Kind:         item.Title.Kind,
 				EpisodeCount: len(item.Episodes),
 				Bytes:        itemBytes(m, item),
+				PosterPath:   item.Title.PosterPath,
 			})
 		}
 		out = append(out, info)
 	}
+	// Paket terbaru selalu di atas. Fallback path membuat urutan deterministik
+	// untuk paket lama yang tidak memiliki created_at.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].CreatedAt != out[j].CreatedAt {
+			if out[i].CreatedAt == "" {
+				return false
+			}
+			if out[j].CreatedAt == "" {
+				return true
+			}
+			return out[i].CreatedAt > out[j].CreatedAt
+		}
+		return out[i].Path > out[j].Path
+	})
 	return out, nil
 }
 
@@ -337,6 +358,54 @@ func itemBytes(m *Manifest, item Item) int64 {
 		total += byPath[p].Size
 	}
 	return total
+}
+
+// ErrNoPoster reports that a package item has no usable poster file.
+var ErrNoPoster = errors.New("transfer: poster tidak tersedia")
+
+// PackagePosterPath returns the verified poster path for one package item.
+func PackagePosterPath(packageDir string, index int) (string, error) {
+	m, err := ReadManifest(packageDir)
+	if err != nil {
+		return "", err
+	}
+	if index < 0 || index >= len(m.Items) {
+		return "", fmt.Errorf("%w: item index %d", ErrInvalidPackage, index)
+	}
+	item := m.Items[index]
+	rel := strings.TrimSpace(item.Title.PosterPath)
+	if rel == "" {
+		return "", ErrNoPoster
+	}
+	clean, err := cleanRel(rel)
+	if err != nil {
+		return "", err
+	}
+	inItem := false
+	for _, f := range item.Files {
+		if f == "media/"+clean {
+			inItem = true
+			break
+		}
+	}
+	if !inItem {
+		return "", ErrNoPoster
+	}
+	full, err := joinPackage(packageDir, "media/"+clean)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Lstat(full)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", ErrNoPoster
+	}
+	ext := strings.ToLower(filepath.Ext(clean))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".webp":
+		return full, nil
+	default:
+		return "", ErrNoPoster
+	}
 }
 
 // cleanRel normalises a manifest path and rejects absolute paths, volume

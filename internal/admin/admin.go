@@ -275,6 +275,8 @@ func (a *Admin) Mount(r chi.Router) {
 		if a.transfer != nil {
 			pr.With(csrf).Get("/transfer/drives", a.handleTransferDrives)
 			pr.With(csrf).Get("/transfer/packages", a.handleTransferPackages)
+			pr.With(csrf).Get("/transfer/batch-items", a.handleTransferBatchItems)
+			pr.With(csrf).Get("/transfer/package-poster", a.handleTransferPackagePoster)
 			pr.With(csrf).Get("/transfer/local-content", a.handleTransferLocalContent)
 			pr.With(csrf).Post("/transfer/export", a.handleTransferExport)
 			pr.With(csrf).Post("/transfer/import", a.handleTransferImport)

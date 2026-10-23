@@ -141,6 +141,11 @@
       </div>
     </div>
     <div id="offline-list"><p class="muted">Pilih drive lalu tekan Refresh.</p></div>
+    <div class="pager" role="navigation" aria-label="Navigasi paket offline">
+      <button type="button" class="secondary" id="offline-prev" disabled>‹ Sebelumnya</button>
+      <span class="small muted" id="offline-page-info" aria-live="polite">Halaman 1 / 1</span>
+      <button type="button" class="secondary" id="offline-next" disabled>Berikutnya ›</button>
+    </div>
   </div>
 
   <div class="dialog-foot">
@@ -212,10 +217,16 @@
   var offlineStatus = document.getElementById('offline-status');
   var offlineList = document.getElementById('offline-list');
   var offlineError = document.getElementById('offline-error');
+  var offlinePrev = document.getElementById('offline-prev');
+  var offlineNext = document.getElementById('offline-next');
+  var offlinePageInfo = document.getElementById('offline-page-info');
 
   var currentSource = 'online';
   var offlineSelected = new Map();
   var offlinePackages = [];
+  var offlinePage = 1;
+  var offlineLastPage = 1;
+  var offlineTotal = 0;
 
   // currentCategory adalah tab yang sedang aktif; tab Movie dipakai saat modal
   // dibuka.
@@ -516,13 +527,19 @@
 
   function loadOfflineDrives() {
     offlineStatus.textContent = 'Memuat drive…';
+    offlineSelected.clear();
+    updateSaveButton();
+    offlinePage = 1;
     fetchJSON('/transfer/drives').then(function (data) {
       var drives = data.drives || [];
       offlineDrive.textContent = '';
       if (!drives.length) {
         offlineStatus.textContent = 'Tidak ada drive ter-mount.';
         offlineList.textContent = '';
+        offlineLastPage = 1;
+        offlineTotal = 0;
         placeholderOffline('Colokkan HDD lalu tekan Refresh.');
+        updateOfflinePager();
         return;
       }
       drives.forEach(function (drive) {
@@ -533,7 +550,7 @@
         offlineDrive.appendChild(option);
       });
       offlineStatus.textContent = drives.length + ' drive ditemukan.';
-      loadOfflinePackages();
+      loadOfflinePackages(1);
     }).catch(function (err) {
       offlineStatus.textContent = '';
       showOfflineError(err.message);
@@ -547,17 +564,30 @@
     offlineList.appendChild(p);
   }
 
-  function loadOfflinePackages() {
+  function updateOfflinePager() {
+    offlinePageInfo.textContent = 'Halaman ' + offlinePage + ' / ' + offlineLastPage +
+      (offlineTotal ? ' · ' + offlineTotal + ' paket' : '');
+    offlinePrev.disabled = offlinePage <= 1;
+    offlineNext.disabled = offlinePage >= offlineLastPage;
+  }
+
+  function loadOfflinePackages(page) {
     var drive = offlineDrive.value;
     if (!drive) { return; }
-    offlineSelected.clear();
-    updateSaveButton();
+    page = page || 1;
     clearOfflineError();
     offlineStatus.textContent = 'Memindai paket…';
-    fetchJSON('/transfer/packages?drive=' + encodeURIComponent(drive)).then(function (data) {
+    fetchJSON('/transfer/packages?drive=' + encodeURIComponent(drive) +
+      '&page=' + encodeURIComponent(page) + '&per_page=10').then(function (data) {
       offlinePackages = data.packages || [];
-      offlineStatus.textContent = offlinePackages.length + ' paket ditemukan.';
+      var meta = data.meta || {};
+      offlinePage = meta.page || page;
+      offlineLastPage = Math.max(1, meta.total_pages || 1);
+      offlineTotal = meta.total || 0;
+      if (offlinePage > offlineLastPage) { offlinePage = offlineLastPage; }
+      offlineStatus.textContent = offlineTotal + ' paket ditemukan.';
       renderOfflinePackages();
+      updateOfflinePager();
     }).catch(function (err) {
       offlineStatus.textContent = '';
       showOfflineError(err.message);
@@ -581,6 +611,37 @@
       meta.className = 'small muted';
       meta.textContent = (pkg.created_at || '') + ' · ' + bytesLabel(pkg.total_bytes);
       head.appendChild(meta);
+
+      if (!pkg.error) {
+        var eligible = (pkg.items || []).filter(function (item) { return !item.existing; });
+        var selectedInPkg = eligible.filter(function (item) {
+          return offlineSelected.has(pkg.path + '\x00' + item.index);
+        }).length;
+        var selectAll = document.createElement('label');
+        selectAll.className = 'batch-check';
+        var selectAllBox = document.createElement('input');
+        selectAllBox.type = 'checkbox';
+        selectAllBox.disabled = eligible.length === 0;
+        selectAllBox.checked = eligible.length > 0 && selectedInPkg === eligible.length;
+        selectAllBox.indeterminate = selectedInPkg > 0 && selectedInPkg < eligible.length;
+        selectAllBox.addEventListener('change', function () {
+          eligible.forEach(function (item) {
+            var key = pkg.path + '\x00' + item.index;
+            if (selectAllBox.checked) {
+              offlineSelected.set(key, { package: pkg.path, index: item.index });
+            } else {
+              offlineSelected.delete(key);
+            }
+          });
+          renderOfflinePackages();
+          updateSaveButton();
+        });
+        var selectText = document.createElement('span');
+        selectText.textContent = 'Pilih semua di paket ini';
+        selectAll.appendChild(selectAllBox);
+        selectAll.appendChild(selectText);
+        head.appendChild(selectAll);
+      }
       article.appendChild(head);
 
       if (pkg.error) {
@@ -595,9 +656,11 @@
           var key = pkg.path + '\x00' + item.index;
           var label = document.createElement('label');
           label.className = 'content-item';
+          if (item.existing) { label.className += ' content-item-added'; }
           var checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
-          checkbox.checked = offlineSelected.has(key);
+          checkbox.checked = !item.existing && offlineSelected.has(key);
+          checkbox.disabled = !!item.existing;
           checkbox.addEventListener('change', function () {
             if (checkbox.checked) {
               offlineSelected.set(key, { package: pkg.path, index: item.index });
@@ -617,7 +680,22 @@
             (item.episode_count ? ' · ' + item.episode_count + ' episode' : '') +
             ' · ' + bytesLabel(item.bytes);
           info.appendChild(detail);
+          if (item.existing) {
+            var badge = document.createElement('span');
+            badge.className = 'badge small';
+            badge.textContent = 'Sudah ada' + (item.existing_generation ? ' · ' + item.existing_generation : '');
+            info.appendChild(badge);
+          }
           label.appendChild(checkbox);
+          if (item.poster_path) {
+            var poster = document.createElement('img');
+            poster.className = 'content-poster';
+            poster.alt = '';
+            poster.loading = 'lazy';
+            poster.src = '/transfer/package-poster?package=' + encodeURIComponent(pkg.path) +
+              '&item=' + encodeURIComponent(item.index);
+            label.appendChild(poster);
+          }
           label.appendChild(info);
           list.appendChild(label);
         });
@@ -738,7 +816,21 @@
     offlineRefresh.addEventListener('click', loadOfflineDrives);
   }
   if (offlineDrive) {
-    offlineDrive.addEventListener('change', loadOfflinePackages);
+    offlineDrive.addEventListener('change', function () {
+      offlineSelected.clear();
+      updateSaveButton();
+      loadOfflinePackages(1);
+    });
+  }
+  if (offlinePrev) {
+    offlinePrev.addEventListener('click', function () {
+      if (offlinePage > 1) { loadOfflinePackages(offlinePage - 1); }
+    });
+  }
+  if (offlineNext) {
+    offlineNext.addEventListener('click', function () {
+      if (offlinePage < offlineLastPage) { loadOfflinePackages(offlinePage + 1); }
+    });
   }
   prevButton.addEventListener('click', function () {
     if (currentPage > 1) { loadPage(currentPage - 1); }
@@ -843,43 +935,82 @@
       listElement.appendChild(empty);
       return;
     }
-    var grid = document.createElement('div');
-    grid.className = 'content-grid';
+    var groups = new Map();
     content.forEach(function (item) {
-      var label = document.createElement('label');
-      label.className = 'content-item';
-      var checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.checked = selected.has(item.item_id);
-      checkbox.addEventListener('change', function () {
-        if (checkbox.checked) { selected.add(item.item_id); } else { selected.delete(item.item_id); }
-        updateButton();
-      });
-      var info = document.createElement('span');
-      info.className = 'content-info';
-      var title = document.createElement('strong');
-      title.textContent = item.title;
-      info.appendChild(title);
-      var meta = document.createElement('span');
-      meta.className = 'small muted';
-      meta.textContent = item.category + ' · ' + item.generation_label +
-        ' · ' + item.episodes_done + '/' + item.episodes_total + ' episode' +
-        ' · ' + bytesLabel(item.bytes) +
-        (item.copies > 1 ? ' · ada di ' + item.copies + ' batch (hanya sekali diexport)' : '');
-      info.appendChild(meta);
-      label.appendChild(checkbox);
-      if (item.poster_url) {
-        var poster = document.createElement('img');
-        poster.className = 'content-poster';
-        poster.alt = '';
-        poster.loading = 'lazy';
-        poster.src = item.poster_url;
-        label.appendChild(poster);
-      }
-      label.appendChild(info);
-      grid.appendChild(label);
+      var label = item.generation_label || 'batch';
+      if (!groups.has(label)) { groups.set(label, []); }
+      groups.get(label).push(item);
     });
-    listElement.appendChild(grid);
+    groups.forEach(function (items, label) {
+      var section = document.createElement('section');
+      section.className = 'export-batch';
+      var head = document.createElement('label');
+      head.className = 'batch-check';
+      var all = document.createElement('input');
+      all.type = 'checkbox';
+      var chosen = items.filter(function (item) { return selected.has(item.item_id); }).length;
+      all.checked = chosen === items.length;
+      all.indeterminate = chosen > 0 && chosen < items.length;
+      all.addEventListener('change', function () {
+        all.disabled = true;
+        fetchJSON('/transfer/batch-items?label=' + encodeURIComponent(label)).then(function (data) {
+          var ids = data.item_ids || [];
+          ids.forEach(function (id) {
+            if (all.checked) { selected.add(Number(id)); } else { selected.delete(Number(id)); }
+          });
+          all.disabled = false;
+          renderContent();
+          updateButton();
+        }).catch(function (err) {
+          all.disabled = false;
+          showError(err.message);
+        });
+      });
+      var text = document.createElement('span');
+      text.textContent = label + ' · pilih semua batch ini';
+      head.appendChild(all);
+      head.appendChild(text);
+      section.appendChild(head);
+
+      var grid = document.createElement('div');
+      grid.className = 'content-grid';
+      items.forEach(function (item) {
+        var card = document.createElement('label');
+        card.className = 'content-item';
+        var checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = selected.has(item.item_id);
+        checkbox.addEventListener('change', function () {
+          if (checkbox.checked) { selected.add(item.item_id); } else { selected.delete(item.item_id); }
+          updateButton();
+        });
+        var info = document.createElement('span');
+        info.className = 'content-info';
+        var title = document.createElement('strong');
+        title.textContent = item.title;
+        info.appendChild(title);
+        var meta = document.createElement('span');
+        meta.className = 'small muted';
+        meta.textContent = item.category + ' · ' + item.generation_label +
+          ' · ' + item.episodes_done + '/' + item.episodes_total + ' episode' +
+          ' · ' + bytesLabel(item.bytes) +
+          (item.copies > 1 ? ' · ada di ' + item.copies + ' batch (hanya sekali diexport)' : '');
+        info.appendChild(meta);
+        card.appendChild(checkbox);
+        if (item.poster_url) {
+          var poster = document.createElement('img');
+          poster.className = 'content-poster';
+          poster.alt = '';
+          poster.loading = 'lazy';
+          poster.src = item.poster_url;
+          card.appendChild(poster);
+        }
+        card.appendChild(info);
+        grid.appendChild(card);
+      });
+      section.appendChild(grid);
+      listElement.appendChild(section);
+    });
   }
   function loadContent(page) {
     page = page || 1;

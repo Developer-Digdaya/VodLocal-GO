@@ -3,6 +3,7 @@ package transfer
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -80,7 +81,7 @@ func TestExportImportRoundTrip(t *testing.T) {
 	}
 	waitRun(t, st, exportRun, "completed")
 
-	packages, err := svc.ListPackages(dest)
+	packages, err := svc.ListPackages(ctx, dest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,48 +98,82 @@ func TestExportImportRoundTrip(t *testing.T) {
 	if m.TotalBytes == 0 || len(m.Files) != 4 {
 		t.Fatalf("manifest files/bytes = %d/%d, mau 4/>0", len(m.Files), m.TotalBytes)
 	}
+	if _, err := PackagePosterPath(packages[0].Path, 0); err != nil {
+		t.Fatalf("PackagePosterPath: %v", err)
+	}
+	ids, err := svc.LocalContentIDsByBatch(ctx, "gen-000001")
+	if err != nil || len(ids) != 1 || ids[0] != 1 {
+		t.Fatalf("batch ids = %v/%v, mau [1]", ids, err)
+	}
 
-	importRun, err := svc.StartImport(ctx, packages[0].Path, nil, "test")
+	// Server bus adalah database terpisah dari server kantor.
+	destDir := filepath.Join(dir, "bus")
+	destStore, err := store.Open(filepath.Join(destDir, "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = destStore.Close() })
+	if err := destStore.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := destStore.Write().ExecContext(ctx,
+		`INSERT INTO providers (id, code, name, category) VALUES (1, 'densgo', 'Densgo', 'vod')`); err != nil {
+		t.Fatal(err)
+	}
+	destMediaRoot := filepath.Join(destDir, "media")
+	destMedia, err := mediafs.New(destMediaRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	importSvc, err := New(Config{Store: destStore, Media: destMedia, Now: time.Now})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	importRun, err := importSvc.StartImport(ctx, packages[0].Path, nil, "test")
 	if err != nil {
 		t.Fatalf("StartImport: %v", err)
 	}
-	waitRun(t, st, importRun, "completed")
+	waitRun(t, destStore, importRun, "completed")
 
 	var count int
-	if err := st.Read().QueryRowContext(ctx, `SELECT COUNT(*) FROM generations`).Scan(&count); err != nil {
+	if err := destStore.Read().QueryRowContext(ctx, `SELECT COUNT(*) FROM generations`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if count != 2 {
-		t.Fatalf("generations = %d, mau 2", count)
+	if count != 1 {
+		t.Fatalf("generations = %d, mau 1", count)
 	}
 	var label, status string
-	if err := st.Read().QueryRowContext(ctx,
+	if err := destStore.Read().QueryRowContext(ctx,
 		`SELECT label, status FROM generations ORDER BY id DESC LIMIT 1`).Scan(&label, &status); err != nil {
 		t.Fatal(err)
 	}
-	if label != "gen-000002" || status != "active" {
-		t.Fatalf("generation baru = %s/%s, mau gen-000002/active", label, status)
+	if label != "gen-000001" || status != "active" {
+		t.Fatalf("generation baru = %s/%s, mau gen-000001/active", label, status)
 	}
 	var playlist string
-	if err := st.Read().QueryRowContext(ctx,
-		`SELECT playlist_path FROM renditions WHERE generation_id = 2`).Scan(&playlist); err != nil {
+	if err := destStore.Read().QueryRowContext(ctx,
+		`SELECT playlist_path FROM renditions WHERE generation_id = 1`).Scan(&playlist); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(mediaRoot, label, filepath.FromSlash(playlist))); err != nil {
+	if _, err := os.Stat(filepath.Join(destMediaRoot, label, filepath.FromSlash(playlist))); err != nil {
 		t.Fatalf("playlist import tidak ada: %v", err)
 	}
 
-	// Judul yang sama kini ada di dua generation, tetapi daftar export harus
-	// tetap satu baris agar tidak bisa dipilih/diexport dua kali.
-	items, total, err = svc.ListLocalContent(ctx, 1, 30)
+	// Setelah import, paket yang sama harus menandai item sebagai sudah ada,
+	// dan import ulang harus ditolak.
+	packages, err = importSvc.ListPackages(ctx, dest)
 	if err != nil {
-		t.Fatalf("ListLocalContent setelah import: %v", err)
+		t.Fatal(err)
 	}
-	if total != 1 || len(items) != 1 {
-		t.Fatalf("local content setelah import = %d/%d, mau 1/1", len(items), total)
+	if len(packages) != 1 || len(packages[0].Items) != 1 || !packages[0].Items[0].Existing {
+		t.Fatalf("items setelah import = %+v, mau existing", packages)
 	}
-	if items[0].Copies != 2 || items[0].GenerationLabel != label {
-		t.Fatalf("item = %+v, mau copies=2 dan batch terbaru %s", items[0], label)
+	if packages[0].Items[0].ExistingGeneration != label {
+		t.Fatalf("existing generation = %q, mau %q", packages[0].Items[0].ExistingGeneration, label)
+	}
+	if _, err := importSvc.StartImport(ctx, packages[0].Path, nil, "test"); !errors.Is(err, ErrAlreadyExists) {
+		t.Fatalf("import ulang error = %v, mau ErrAlreadyExists", err)
 	}
 }
 

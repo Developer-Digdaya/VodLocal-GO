@@ -33,15 +33,74 @@ func (a *Admin) handleTransferPackages(w http.ResponseWriter, r *http.Request) {
 		response.ErrorMsg(w, response.CodeValidationError, "Drive sumber tidak dikenal.")
 		return
 	}
-	packages, err := a.transfer.ListPackages(root)
+	all, err := a.transfer.ListPackages(r.Context(), root)
 	if err != nil {
 		response.ErrorMsg(w, response.CodeInternalError, "Gagal membaca isi HDD.")
 		return
 	}
+	page, perPage := transferPage(r.URL.Query(), 10)
+	total := int64(len(all))
+	lastPage := pageCount(total, perPage)
+	if lastPage > 0 && int64(page) > lastPage {
+		page = int(lastPage)
+	}
+	start := (page - 1) * perPage
+	end := start + perPage
+	if start > len(all) {
+		start = len(all)
+	}
+	if end > len(all) {
+		end = len(all)
+	}
+	packages := all[start:end]
 	if packages == nil {
 		packages = []transfer.PackageInfo{}
 	}
-	response.Success(w, map[string]any{"packages": packages})
+	response.Success(w, map[string]any{
+		"packages": packages,
+		"meta": map[string]any{
+			"page": page, "per_page": perPage, "total": total, "total_pages": lastPage,
+		},
+	})
+}
+
+// handleTransferBatchItems returns every deduplicated item id in a generation
+// so the UI can check a whole batch without loading all pages.
+func (a *Admin) handleTransferBatchItems(w http.ResponseWriter, r *http.Request) {
+	label := strings.TrimSpace(r.URL.Query().Get("label"))
+	if label == "" {
+		response.ErrorMsg(w, response.CodeValidationError, "Batch tidak dikenal.")
+		return
+	}
+	ids, err := a.transfer.LocalContentIDsByBatch(r.Context(), label)
+	if err != nil {
+		response.ErrorMsg(w, response.CodeInternalError, "Gagal membaca konten batch.")
+		return
+	}
+	if ids == nil {
+		ids = []int64{}
+	}
+	response.Success(w, map[string]any{"item_ids": ids})
+}
+
+// handleTransferPackagePoster serves a poster from an offline package.
+func (a *Admin) handleTransferPackagePoster(w http.ResponseWriter, r *http.Request) {
+	packageDir := strings.TrimSpace(r.URL.Query().Get("package"))
+	if !a.validTransferPackage(packageDir) {
+		http.NotFound(w, r)
+		return
+	}
+	index, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("item")))
+	if err != nil || index < 0 {
+		http.NotFound(w, r)
+		return
+	}
+	path, err := transfer.PackagePosterPath(packageDir, index)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	http.ServeFile(w, r, path)
 }
 
 // handleTransferLocalContent lists downloaded content available for export.
@@ -168,6 +227,9 @@ func (a *Admin) handleTransferImport(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, transfer.ErrInvalidPackage), errors.Is(err, transfer.ErrNoContent):
 			a.renderContentMessage(w, r, http.StatusUnprocessableEntity,
 				"Paket offline tidak valid atau rusak.")
+		case errors.Is(err, transfer.ErrAlreadyExists):
+			a.renderContentMessage(w, r, http.StatusConflict,
+				"Konten sudah ada di server ini; import dibatalkan agar tidak duplikat.")
 		case errors.Is(err, transfer.ErrInsufficientSpace):
 			a.renderContentMessage(w, r, http.StatusInsufficientStorage,
 				"Ruang penyimpanan internal tidak mencukupi untuk import.")

@@ -48,6 +48,11 @@ func (s *Service) StartImport(ctx context.Context, packageDir string, indexes []
 		if exists == 0 {
 			return 0, fmt.Errorf("%w: provider %q tidak terdaftar di server ini", ErrInvalidPackage, item.Provider)
 		}
+		if label, found, err := s.existingContent(ctx, item.Provider, item.Title.ExternalID); err != nil {
+			return 0, err
+		} else if found {
+			return 0, fmt.Errorf("%w: %s (%s)", ErrAlreadyExists, item.Title.Name, label)
+		}
 	}
 
 	// Reject duplicate logical titles before creating any database row.

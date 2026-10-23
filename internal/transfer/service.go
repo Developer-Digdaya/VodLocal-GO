@@ -23,6 +23,10 @@ var ErrNoContent = errors.New("transfer: tidak ada konten yang dipilih")
 // ErrInsufficientSpace is returned when the destination cannot hold the package.
 var ErrInsufficientSpace = errors.New("transfer: ruang penyimpanan tidak mencukupi")
 
+// ErrAlreadyExists is returned when a package item is already available in
+// another generation on this server.
+var ErrAlreadyExists = errors.New("transfer: konten sudah ada di server ini")
+
 // Config wires the transfer service to the app database and media manager.
 type Config struct {
 	Store  *store.Store
@@ -244,9 +248,88 @@ SELECT gi.id, gi.generation_id, g.label, COALESCE(pr.code, ''), gi.category,
 	return out, total, rows.Err()
 }
 
-// ListPackages scans root/VOD-EXPORT for packages.
-func (s *Service) ListPackages(root string) ([]PackageInfo, error) {
-	return ScanPackages(root)
+// ListPackages scans root/VOD-EXPORT for packages and marks items that already
+// have a ready rendition on this server.
+func (s *Service) ListPackages(ctx context.Context, root string) ([]PackageInfo, error) {
+	packages, err := ScanPackages(root)
+	if err != nil {
+		return nil, err
+	}
+	for pi := range packages {
+		for ii := range packages[pi].Items {
+			item := &packages[pi].Items[ii]
+			label, exists, err := s.existingContent(ctx, item.Provider, item.ExternalID)
+			if err != nil {
+				return nil, err
+			}
+			item.Existing = exists
+			item.ExistingGeneration = label
+		}
+	}
+	return packages, nil
+}
+
+// LocalContentIDsByBatch returns all deduplicated generation_items ids for a
+// generation label, used by the "select whole batch" checkbox.
+func (s *Service) LocalContentIDsByBatch(ctx context.Context, label string) ([]int64, error) {
+	ctx, cancel := s.sqlCtx(ctx)
+	defer cancel()
+	rows, err := s.store.Read().QueryContext(ctx, `
+WITH done_items AS (
+  SELECT gi.*,
+         ROW_NUMBER() OVER (
+           PARTITION BY gi.provider_id, gi.series_external_id
+           ORDER BY gi.id DESC
+         ) AS rn
+    FROM generation_items gi
+   WHERE gi.status = 'done'
+)
+SELECT gi.id
+  FROM done_items gi
+  JOIN generations g ON g.id = gi.generation_id
+ WHERE gi.rn = 1 AND g.label = ?
+ ORDER BY gi.id DESC`, label)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (s *Service) existingContent(ctx context.Context, provider, externalID string) (string, bool, error) {
+	if provider == "" || externalID == "" {
+		return "", false, nil
+	}
+	ctx, cancel := s.sqlCtx(ctx)
+	defer cancel()
+	var label string
+	err := s.store.Read().QueryRowContext(ctx, `
+SELECT g.label
+  FROM titles t
+  JOIN providers pr ON pr.id = t.provider_id
+  JOIN playables p ON p.title_id = t.id
+  JOIN renditions r ON r.playable_id = p.id
+  JOIN generations g ON g.id = r.generation_id
+ WHERE pr.code = ? AND t.external_id = ? AND r.status = 'ready'
+   AND g.status NOT IN ('building', 'failed')
+ ORDER BY g.created_at DESC, g.id DESC
+ LIMIT 1`, provider, externalID).Scan(&label)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return "", false, nil
+	case err != nil:
+		return "", false, err
+	default:
+		return label, true, nil
+	}
 }
 
 // Drives returns platform-appropriate destinations/sources.
