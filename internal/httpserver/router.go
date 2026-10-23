@@ -3,7 +3,7 @@
 //
 // Bentuk response mengikuti docs/standar-response.md: semua response JSON
 // memakai envelope dari package response. Endpoint yang dikecualikan dokumen
-// tersebut (docs/api-spec.md §11) — /media/*, /artwork/*, /health, /ready —
+// tersebut (docs/api-spec.md §11) — /media/*, /health, /ready —
 // mengembalikan bytes mentah atau JSON sederhana tanpa envelope.
 package httpserver
 
@@ -25,8 +25,7 @@ type Config struct {
 	Version string
 	// Logger dipakai access log ringkas; nil berarti slog.Default().
 	Logger *slog.Logger
-	// Media melayani /media/{generation}/* dan /artwork/*; nil mematikan
-	// kedua route.
+	// Media melayani /media/{generation}/*; nil mematikan route.
 	Media MediaResolver
 	// Ready dilaporkan oleh GET /ready; nil selalu menjawab 503.
 	Ready Readiness
@@ -63,7 +62,6 @@ func NewRouter(cfg Config) http.Handler {
 
 	if cfg.Media != nil {
 		r.Get("/media/{generation}/*", MediaHandler(cfg.Media).ServeHTTP)
-		r.Get("/artwork/*", ArtworkHandler(cfg.Media).ServeHTTP)
 	}
 
 	if cfg.API != nil {

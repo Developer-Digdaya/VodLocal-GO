@@ -118,11 +118,6 @@ type Config struct {
 	// Ingest mengantrekan series terpilih dari modal "List Content"; nil berarti
 	// rute /content tidak dipasang.
 	Ingest IngestStarter
-	// ArtworkRoot adalah akar direktori artwork (poster/backdrop). Aksi "Remove
-	// all batch" mengosongkan direktori ini supaya tidak ada artwork yang
-	// menunjuk katalog yang sudah dihapus. Opsional: bila kosong, artwork tidak
-	// disentuh.
-	ArtworkRoot string
 	// Transfer menangani export/import paket HDD; nil berarti fitur transfer
 	// tidak dipasang.
 	Transfer *transfer.Service
@@ -130,23 +125,20 @@ type Config struct {
 
 // Admin adalah panel administrasi. Nilainya aman dipakai banyak goroutine.
 type Admin struct {
-	store    *store.Store
-	read     *sql.DB
-	write    *sql.DB
-	syncer   SyncRunner
-	media    MediaManager
-	sessions *httpserver.SessionManager
-	log      *slog.Logger
-	now      func() time.Time
-	version  string
-	usage    UsageFunc
-	lister   SeriesLister
-	ingest   IngestStarter
-	// artworkRoot adalah akar artwork yang dikosongkan aksi "Remove all batch";
-	// string kosong berarti fitur tersebut tidak menyentuh artwork.
-	artworkRoot string
-	transfer    *transfer.Service
-	templates   map[string]*template.Template
+	store     *store.Store
+	read      *sql.DB
+	write     *sql.DB
+	syncer    SyncRunner
+	media     MediaManager
+	sessions  *httpserver.SessionManager
+	log       *slog.Logger
+	now       func() time.Time
+	version   string
+	usage     UsageFunc
+	lister    SeriesLister
+	ingest    IngestStarter
+	transfer  *transfer.Service
+	templates map[string]*template.Template
 
 	// content menyimpan hasil ListSeries terakhir agar slug yang dipilih pada
 	// modal "List Content" bisa diresolusi saat formulir dikirim.
@@ -187,23 +179,22 @@ func New(cfg Config) (*Admin, error) {
 	}
 
 	return &Admin{
-		store:       cfg.Store,
-		read:        cfg.Store.Read(),
-		write:       cfg.Store.Write(),
-		syncer:      cfg.Syncer,
-		media:       cfg.Media,
-		sessions:    cfg.Sessions,
-		log:         logger,
-		now:         clock,
-		version:     cfg.Version,
-		usage:       cfg.StorageUsage,
-		lister:      cfg.Lister,
-		ingest:      cfg.Ingest,
-		artworkRoot: cfg.ArtworkRoot,
-		transfer:    cfg.Transfer,
-		templates:   templates,
-		content:     newContentCache(),
-		flashes:     make(map[string]flash),
+		store:     cfg.Store,
+		read:      cfg.Store.Read(),
+		write:     cfg.Store.Write(),
+		syncer:    cfg.Syncer,
+		media:     cfg.Media,
+		sessions:  cfg.Sessions,
+		log:       logger,
+		now:       clock,
+		version:   cfg.Version,
+		usage:     cfg.StorageUsage,
+		lister:    cfg.Lister,
+		ingest:    cfg.Ingest,
+		transfer:  cfg.Transfer,
+		templates: templates,
+		content:   newContentCache(),
+		flashes:   make(map[string]flash),
 	}, nil
 }
 

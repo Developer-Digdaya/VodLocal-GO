@@ -13,7 +13,7 @@ import (
 )
 
 // titlesSelect mengambil satu baris judul lengkap dengan jumlah episode dan
-// label generation yang menyimpan artwork. Label dipilih dari rendition ready
+// label generation yang menyimpan poster. Label dipilih dari rendition ready
 // pada generation mana pun yang sudah selesai (bukan building/failed), sehingga
 // batch lama tetap bisa dipakai.
 const titlesSelect = `SELECT t.id, COALESCE(pr.code, ''), t.kind, t.title, t.slug,
@@ -118,7 +118,7 @@ type rowScanner interface {
 // dan still (§7.2). Poster/backdrop kini tersimpan di dalam folder generation
 // (satu folder dengan m3u8/ts), jadi kolom poster_path/backdrop_path/still_path
 // berisi path relatif terhadap root generation dan harus tampil sebagai
-// /media/<label>/<path>, bukan /artwork/<path>.
+// /media/<label>/<path>.
 //
 // Path dibersihkan dengan path.Clean (bukan filepath.Clean) supaya hasilnya
 // selalu berbentuk URL POSIX dan tidak pernah keluar dari root generation:

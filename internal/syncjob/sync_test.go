@@ -43,15 +43,13 @@ func newTestStore(t *testing.T) *store.Store {
 
 // testRig mengumpulkan komponen yang dipakai satu skenario uji.
 type testRig struct {
-	store   *store.Store
-	media   *mediafs.Manager
-	syncer  *Syncer
-	root    string
-	artwork string
+	store  *store.Store
+	media  *mediafs.Manager
+	syncer *Syncer
+	root   string
 }
 
-// newRig menyiapkan Syncer lengkap dengan media root dan artwork root di
-// t.TempDir().
+// newRig menyiapkan Syncer lengkap dengan media root di t.TempDir().
 func newRig(t *testing.T, st *store.Store, client *http.Client, provs ...provider.Provider) *testRig {
 	t.Helper()
 
@@ -61,23 +59,21 @@ func newRig(t *testing.T, st *store.Store, client *http.Client, provs ...provide
 		t.Fatalf("mediafs.New: %v", err)
 	}
 
-	artwork := filepath.Join(t.TempDir(), "artwork")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	syncer, err := New(Config{
-		Store:       st,
-		Media:       media,
-		Downloader:  download.New(download.Options{Client: client, Retries: 0}),
-		Providers:   provs,
-		ArtworkRoot: artwork,
-		Logger:      logger,
-		HTTPClient:  client,
+		Store:      st,
+		Media:      media,
+		Downloader: download.New(download.Options{Client: client, Retries: 0}),
+		Providers:  provs,
+		Logger:     logger,
+		HTTPClient: client,
 	})
 	if err != nil {
 		t.Fatalf("syncjob.New: %v", err)
 	}
 
-	return &testRig{store: st, media: media, syncer: syncer, root: root, artwork: artwork}
+	return &testRig{store: st, media: media, syncer: syncer, root: root}
 }
 
 // mediaServer menjalankan httptest.Server yang menyajikan playlist HLS dengan

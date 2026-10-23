@@ -289,11 +289,11 @@ type seriesDetails struct {
 
 // media memuat aset gambar sebuah item.
 type media struct {
-	PosterVertical artwork `json:"poster_vertical"`
+	PosterVertical posterAsset `json:"poster_vertical"`
 }
 
-// artwork adalah satu aset gambar.
-type artwork struct {
+// posterAsset adalah satu aset gambar.
+type posterAsset struct {
 	OriginalURL string `json:"original_url"`
 }
 

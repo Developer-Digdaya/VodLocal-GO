@@ -236,15 +236,6 @@ func nullIfBlank(s string) any {
 	return s
 }
 
-// artworkURL menyusun URL artwork dari path relatif di DB (§7.2).
-func artworkURL(path string) any {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return nil
-	}
-	return "/artwork/" + strings.TrimPrefix(strings.ReplaceAll(path, `\`, "/"), "/")
-}
-
 // mediaURL menyusun URL media di dalam sebuah generation (§8.1).
 func mediaURL(generation, path string) string {
 	return "/media/" + generation + "/" + strings.TrimPrefix(strings.ReplaceAll(path, `\`, "/"), "/")

@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -106,7 +104,6 @@ func run() error {
 		Sources:     sources,
 		Logger:      logger,
 		Now:         time.Now,
-		ArtworkRoot: cfg.ArtworkRoot,
 		MaxEpisodes: cfg.IngestMaxEpisodes,
 		// Pemeriksaan kapasitas disk sebelum ingest dimulai. Ambang 0 (tidak
 		// mungkin dari config, yang membatasi 1..100) berarti pemeriksaan
@@ -119,13 +116,12 @@ func run() error {
 	}
 
 	syncer, err := syncjob.New(syncjob.Config{
-		Store:       st,
-		Media:       media,
-		Downloader:  downloader,
-		ArtworkRoot: cfg.ArtworkRoot,
-		Logger:      logger,
-		Now:         time.Now,
-		Notifier:    notifier,
+		Store:      st,
+		Media:      media,
+		Downloader: downloader,
+		Logger:     logger,
+		Now:        time.Now,
+		Notifier:   notifier,
 	})
 	if err != nil {
 		return err
@@ -169,10 +165,7 @@ func run() error {
 		Version:  version,
 		Lister:   sources,
 		Ingest:   ingestSvc,
-		// ArtworkRoot dipakai aksi "Remove all batch" untuk mengosongkan cache
-		// artwork setelah katalog dihapus.
-		ArtworkRoot: cfg.ArtworkRoot,
-		Transfer:    transferSvc,
+		Transfer: transferSvc,
 		StorageUsage: func() (int64, int64, error) {
 			return diskUsage(cfg.MediaRoot)
 		},
@@ -198,7 +191,7 @@ func run() error {
 	handler := httpserver.NewRouter(httpserver.Config{
 		Version:  version,
 		Logger:   logger,
-		Media:    mediaResolver{media: media, artworkRoot: cfg.ArtworkRoot},
+		Media:    mediaResolver{media: media},
 		Ready:    readiness{store: st, media: media},
 		Devices:  deviceAuth,
 		Sessions: sessions,
@@ -257,40 +250,11 @@ func newLogger(level string) *slog.Logger {
 
 // mediaResolver menjembatani handler media dengan layout direktori di disk.
 type mediaResolver struct {
-	media       *mediafs.Manager
-	artworkRoot string
+	media *mediafs.Manager
 }
 
 func (m mediaResolver) ResolveMedia(_ context.Context, generation, rel string) (string, error) {
 	return m.media.Resolve(generation, rel)
-}
-
-func (m mediaResolver) ResolveArtwork(_ context.Context, rel string) (string, error) {
-	return safeJoin(m.artworkRoot, rel)
-}
-
-func safeJoin(root, rel string) (string, error) {
-	rootAbs, err := filepath.Abs(root)
-	if err != nil {
-		return "", httpserver.ErrInvalidMediaPath
-	}
-
-	normalized := strings.ReplaceAll(rel, "\\", "/")
-	clean := path.Clean("/" + normalized)
-	if clean == "/" {
-		return "", httpserver.ErrInvalidMediaPath
-	}
-
-	full := filepath.Join(rootAbs, filepath.FromSlash(strings.TrimPrefix(clean, "/")))
-	fullAbs, err := filepath.Abs(full)
-	if err != nil {
-		return "", httpserver.ErrInvalidMediaPath
-	}
-
-	if fullAbs != rootAbs && !strings.HasPrefix(fullAbs, rootAbs+string(os.PathSeparator)) {
-		return "", httpserver.ErrInvalidMediaPath
-	}
-	return fullAbs, nil
 }
 
 // readiness memeriksa database dan keberadaan batch yang punya media siap.

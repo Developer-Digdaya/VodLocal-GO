@@ -150,13 +150,6 @@ type Config struct {
 	Logger *slog.Logger
 	// Now memasok waktu sekarang. Bila nil dipakai time.Now.
 	Now func() time.Time
-	// ArtworkRoot dipertahankan demi kompatibilitas pemanggil lama dan tidak
-	// lagi dipakai: poster ingest ditulis ke dalam generation, satu folder
-	// dengan media series-nya
-	// (<generation>/dramahits/series/<seriesDir>/poster.jpg), sehingga
-	// titles.poster_path relatif terhadap root generation dan bisa disajikan
-	// lewat /media/<label>/<path>.
-	ArtworkRoot string
 	// MaxEpisodes membatasi jumlah episode yang diproses per series pada satu
 	// run. Nilai 0 (default) berarti tanpa batas; nilai negatif diperlakukan
 	// seperti 0. Opsi ini disediakan untuk smoke test lokal, dan episode yang
@@ -1056,7 +1049,7 @@ func (s *Service) jobsFor(dirAbs, baseURL string, assets []hls.AssetRef) ([]down
 // dibangun, satu folder dengan medianya, lalu mengembalikan path relatif
 // terhadap root generation (mis. dramahits/series/<seriesDir>/poster.jpg).
 // Path itu yang disimpan titles.poster_path, sehingga poster bisa disajikan
-// lewat /media/<label>/<path> tanpa ArtworkRoot. Kegagalan unduhan hanya dicatat
+// lewat /media/<label>/<path>. Kegagalan unduhan hanya dicatat
 // di log dan menghasilkan string kosong, sehingga poster tidak pernah
 // menggagalkan episode.
 func (s *Service) fetchPoster(ctx context.Context, st *runState, provider, category, seriesDir, posterURL string) string {

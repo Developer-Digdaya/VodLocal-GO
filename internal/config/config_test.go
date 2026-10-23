@@ -27,7 +27,7 @@ func mapEnv(env map[string]string) func(string) string {
 }
 
 // absDefault mengembalikan nilai default path setelah di-resolve filepath.Abs,
-// karena MediaRoot/ArtworkRoot selalu dipulangkan dalam bentuk absolut.
+// karena MediaRoot selalu dipulangkan dalam bentuk absolut.
 func absDefault(t *testing.T, path string) string {
 	t.Helper()
 	abs, err := filepath.Abs(path)
@@ -50,7 +50,6 @@ func TestLoadFromDefaults(t *testing.T) {
 		HTTPAddr:                ":8080",
 		DBPath:                  "data/app.db",
 		MediaRoot:               absDefault(t, "data/media"),
-		ArtworkRoot:             absDefault(t, "data/media/artwork"),
 		LogLevel:                "info",
 		SyncMaxParallel:         8,
 		SyncRetries:             3,
@@ -93,7 +92,6 @@ func TestLoadFromOverride(t *testing.T) {
 		"VODLOCAL_HTTP_ADDR":                  "127.0.0.1:9090",
 		"VODLOCAL_DB_PATH":                    "custom/app.db",
 		"VODLOCAL_MEDIA_ROOT":                 "/srv/media",
-		"VODLOCAL_ARTWORK_ROOT":               "/srv/media/art",
 		"VODLOCAL_LOG_LEVEL":                  "debug",
 		"VODLOCAL_SYNC_MAX_PARALLEL":          "16",
 		"VODLOCAL_SYNC_RETRIES":               "7",
@@ -116,7 +114,6 @@ func TestLoadFromOverride(t *testing.T) {
 		HTTPAddr:                "127.0.0.1:9090",
 		DBPath:                  "custom/app.db",
 		MediaRoot:               absDefault(t, "/srv/media"),
-		ArtworkRoot:             absDefault(t, "/srv/media/art"),
 		LogLevel:                "debug",
 		SyncMaxParallel:         16,
 		SyncRetries:             7,
@@ -290,34 +287,23 @@ func TestLoadFromStorageThreshold(t *testing.T) {
 	}
 }
 
-// TestLoadFromResolvesRelativePaths memastikan MediaRoot dan ArtworkRoot
-// di-resolve menjadi absolut.
+// TestLoadFromResolvesRelativePaths memastikan MediaRoot di-resolve menjadi
+// absolut.
 func TestLoadFromResolvesRelativePaths(t *testing.T) {
 	t.Parallel()
 
 	cfg, err := LoadFrom(mapEnv(map[string]string{
-		"VODLOCAL_MEDIA_ROOT":   "media",
-		"VODLOCAL_ARTWORK_ROOT": "./media/artwork",
+		"VODLOCAL_MEDIA_ROOT": "media",
 	}))
 	if err != nil {
 		t.Fatalf("LoadFrom(relative path) error tak terduga: %v", err)
 	}
 
-	tests := []struct {
-		name string
-		got  string
-		want string
-	}{
-		{name: "media root", got: cfg.MediaRoot, want: absDefault(t, "media")},
-		{name: "artwork root", got: cfg.ArtworkRoot, want: absDefault(t, filepath.Join("media", "artwork"))},
+	if !filepath.IsAbs(cfg.MediaRoot) {
+		t.Errorf("media root %q bukan path absolut", cfg.MediaRoot)
 	}
-	for _, tc := range tests {
-		if !filepath.IsAbs(tc.got) {
-			t.Errorf("%s: %q bukan path absolut", tc.name, tc.got)
-		}
-		if tc.got != filepath.Clean(tc.want) {
-			t.Errorf("%s: didapat %q, ingin %q", tc.name, tc.got, tc.want)
-		}
+	if want := absDefault(t, "media"); cfg.MediaRoot != filepath.Clean(want) {
+		t.Errorf("media root: didapat %q, ingin %q", cfg.MediaRoot, want)
 	}
 }
 
@@ -389,7 +375,6 @@ func TestValidateEmptyPaths(t *testing.T) {
 		HTTPAddr:                defaultHTTPAddr,
 		DBPath:                  "",
 		MediaRoot:               "",
-		ArtworkRoot:             "",
 		LogLevel:                defaultLogLevel,
 		SyncMaxParallel:         defaultSyncMaxParallel,
 		SyncRetries:             defaultSyncRetries,
@@ -409,7 +394,7 @@ func TestValidateEmptyPaths(t *testing.T) {
 		t.Fatal("validate(config dengan path kosong) seharusnya error")
 	}
 	msg := err.Error()
-	for _, want := range []string{"VODLOCAL_DB_PATH", "VODLOCAL_MEDIA_ROOT", "VODLOCAL_ARTWORK_ROOT"} {
+	for _, want := range []string{"VODLOCAL_DB_PATH", "VODLOCAL_MEDIA_ROOT"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("pesan error %q tidak menyebut %q", msg, want)
 		}
@@ -418,7 +403,6 @@ func TestValidateEmptyPaths(t *testing.T) {
 	// Config yang sudah benar tidak boleh menghasilkan error.
 	cfg.DBPath = defaultDBPath
 	cfg.MediaRoot = absDefault(t, defaultMediaRoot)
-	cfg.ArtworkRoot = absDefault(t, defaultArtworkRoot)
 	cfg.DramahitsBaseURL = testDramahitsBaseURL
 	if err := validate(cfg); err != nil {
 		t.Errorf("validate(config valid) error tak terduga: %v", err)

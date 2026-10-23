@@ -38,15 +38,6 @@ func (r *testResolver) ResolveMedia(ctx context.Context, generation, rel string)
 	return r.within(filepath.Join(r.root, generation), rel)
 }
 
-func (r *testResolver) ResolveArtwork(ctx context.Context, rel string) (string, error) {
-	r.calls++
-	r.lastRel = rel
-	if r.err != nil {
-		return "", r.err
-	}
-	return r.within(filepath.Join(r.root, "artwork"), rel)
-}
-
 // within menggabungkan rel ke base dan menolak hasil yang keluar dari base.
 func (r *testResolver) within(base, rel string) (string, error) {
 	if rel == "" {
@@ -71,7 +62,6 @@ func (r *testResolver) within(base, rel string) (string, error) {
 func mediaRouter(res httpserver.MediaResolver) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/media/{generation}/*", httpserver.MediaHandler(res).ServeHTTP)
-	r.Get("/artwork/*", httpserver.ArtworkHandler(res).ServeHTTP)
 	return r
 }
 
@@ -219,42 +209,6 @@ func TestMediaHandlerResolverErrors(t *testing.T) {
 				t.Fatalf("status = %d, want %d", rec.Code, tc.want)
 			}
 		})
-	}
-}
-
-func TestArtworkHandler(t *testing.T) {
-	root := t.TempDir()
-	const jpeg = "\xff\xd8\xff\xe0JFIF"
-	writeFile(t, filepath.Join(root, "artwork", "poster.jpg"), jpeg)
-
-	rec := doGet(t, mediaRouter(&testResolver{root: root}), "/artwork/poster.jpg")
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	if got, want := rec.Header().Get("Content-Type"), "image/jpeg"; got != want {
-		t.Errorf("Content-Type = %q, want %q", got, want)
-	}
-	if got, want := rec.Header().Get("Cache-Control"), "public, max-age=86400"; got != want {
-		t.Errorf("Cache-Control = %q, want %q", got, want)
-	}
-	if got := rec.Body.String(); got != jpeg {
-		t.Errorf("body = %q, want %q", got, jpeg)
-	}
-}
-
-func TestArtworkHandlerRejectsTraversal(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, filepath.Join(root, "secret.txt"), "TOPSECRET")
-
-	res := &testResolver{root: root}
-	rec := doGet(t, mediaRouter(res), "/artwork/%2e%2e%2fsecret.txt")
-
-	if rec.Code != http.StatusBadRequest && rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 400 atau 404", rec.Code)
-	}
-	if strings.Contains(rec.Body.String(), "TOPSECRET") {
-		t.Fatalf("body membocorkan berkas di luar root: %q", rec.Body.String())
 	}
 }
 

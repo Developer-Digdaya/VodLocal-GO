@@ -232,7 +232,6 @@ func TestRouterWithoutAPI(t *testing.T) {
 func TestRouterMediaRoutes(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "gen-000001", "seg-00001.ts"), "0123456789")
-	writeFile(t, filepath.Join(root, "artwork", "poster.png"), "PNG")
 
 	router := newTestRouter(t, httpserver.Config{Media: &testResolver{root: root}})
 
@@ -242,14 +241,6 @@ func TestRouterMediaRoutes(t *testing.T) {
 	}
 	if got, want := rec.Header().Get("Content-Type"), "video/mp2t"; got != want {
 		t.Errorf("Content-Type = %q, want %q", got, want)
-	}
-
-	rec = doGet(t, router, "/artwork/poster.png")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status artwork = %d, want 200", rec.Code)
-	}
-	if got, want := rec.Header().Get("Cache-Control"), "public, max-age=86400"; got != want {
-		t.Errorf("Cache-Control = %q, want %q", got, want)
 	}
 
 	rec = doGet(t, router, "/media/gen-000001/%2e%2e%2fsecret.txt")

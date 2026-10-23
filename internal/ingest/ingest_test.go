@@ -62,16 +62,15 @@ func newTestStore(t *testing.T) *store.Store {
 
 // testEnv mengumpulkan komponen yang dipakai satu skenario uji.
 type testEnv struct {
-	svc     *Service
-	store   *store.Store
-	media   *mediafs.Manager
-	root    string
-	artwork string
+	svc   *Service
+	store *store.Store
+	media *mediafs.Manager
+	root  string
 }
 
-// newEnv menyiapkan Service lengkap dengan media root dan artwork root di
-// t.TempDir(). client boleh nil. opts, bila ada, dipanggil berurutan untuk
-// menyesuaikan Config sebelum Service dibuat (mis. MaxEpisodes).
+// newEnv menyiapkan Service lengkap dengan media root di t.TempDir(). client
+// boleh nil. opts, bila ada, dipanggil berurutan untuk menyesuaikan Config
+// sebelum Service dibuat (mis. MaxEpisodes).
 func newEnv(t *testing.T, src catalog.Source, client *http.Client, opts ...func(*Config)) *testEnv {
 	t.Helper()
 
@@ -83,15 +82,13 @@ func newEnv(t *testing.T, src catalog.Source, client *http.Client, opts ...func(
 		t.Fatalf("mediafs.New: %v", err)
 	}
 
-	artwork := filepath.Join(t.TempDir(), "artwork")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	cfg := Config{
-		Store:       st,
-		Media:       media,
-		Source:      src,
-		Logger:      logger,
-		ArtworkRoot: artwork,
+		Store:  st,
+		Media:  media,
+		Source: src,
+		Logger: logger,
 	}
 	if client != nil {
 		cfg.Downloader = download.New(download.Options{Client: client, Retries: 0})
@@ -107,7 +104,7 @@ func newEnv(t *testing.T, src catalog.Source, client *http.Client, opts ...func(
 		t.Fatalf("ingest.New: %v", err)
 	}
 
-	return &testEnv{svc: svc, store: st, media: media, root: root, artwork: artwork}
+	return &testEnv{svc: svc, store: st, media: media, root: root}
 }
 
 // fakeSource adalah catalog.Source in-memory. gate, bila tidak nil, membuat
@@ -518,10 +515,6 @@ func TestIngestHappyPath(t *testing.T) {
 	}
 	mustExist(t, filepath.Join(genDir, filepath.FromSlash(wantPoster)))
 
-	// ArtworkRoot tidak lagi dipakai ingest: tidak ada berkas poster di sana.
-	if _, err := os.Stat(filepath.Join(env.artwork, "dramahits")); !os.IsNotExist(err) {
-		t.Errorf("ArtworkRoot masih dipakai ingest, mau tidak ada (err=%v)", err)
-	}
 	// Folder series memakai UUID; tidak ada folder slug yang dibuat.
 	if _, err := os.Stat(filepath.Join(genDir, "dramahits", "short", testSeriesSlug)); !os.IsNotExist(err) {
 		t.Errorf("folder slug %q ada, mau hanya UUID (err=%v)", testSeriesSlug, err)
@@ -831,9 +824,6 @@ func TestIngestPosterFailureIsNotFatal(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(env.root, "gen-000001", filepath.FromSlash(seriesPosterPath(testSeriesID)))); !os.IsNotExist(err) {
 		t.Errorf("berkas poster ada di generation, mau tidak ada (err=%v)", err)
-	}
-	if _, err := os.Stat(filepath.Join(env.artwork, "dramahits", testSeriesSlug, "poster.jpg")); !os.IsNotExist(err) {
-		t.Errorf("berkas poster ada di ArtworkRoot, mau tidak ada (err=%v)", err)
 	}
 }
 

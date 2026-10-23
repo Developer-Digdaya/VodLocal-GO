@@ -73,8 +73,8 @@ type mediaItemURL struct {
 }
 
 // TestTitleMediaURLs memastikan poster_url, backdrop_url, dan still_url menunjuk
-// ke /media/<generation>/<path>: artwork kini tersimpan di dalam folder
-// generation (satu folder dengan m3u8/ts), bukan lagi di /artwork.
+// ke /media/<generation>/<path> karena gambar tersimpan di dalam folder
+// generation (satu folder dengan m3u8/ts).
 func TestTitleMediaURLs(t *testing.T) {
 	f := newFixture(t, nil)
 	token, _ := f.registerDevice("Tablet Kursi 15", "AA:BB:CC:DD:EE:15")
@@ -90,7 +90,7 @@ func TestTitleMediaURLs(t *testing.T) {
 		BackdropPath: "dramahits/series/9d1c-4f5a/backdrop.jpg",
 		Stills:       []any{"dramahits/series/9d1c-4f5a/still-01.jpg", nil},
 	})
-	// Poster/backdrop NULL dan string kosong → null, bukan URL /artwork.
+	// Poster/backdrop NULL dan string kosong → null.
 	f.seedMediaTitle(mediaTitleSeed{
 		ID:         11,
 		PlayableID: 9101,
@@ -142,9 +142,6 @@ func TestTitleMediaURLs(t *testing.T) {
 	env, rec := f.do(http.MethodGet, "/titles?per_page=200", token, nil)
 	if rec.Code != http.StatusOK || env.Code != response.CodeSuccess {
 		t.Fatalf("GET /titles: status/code = %d/%d, mau 200/0 (body=%s)", rec.Code, env.Code, rec.Body.String())
-	}
-	if body := rec.Body.String(); strings.Contains(body, "/artwork/") {
-		t.Fatalf("GET /titles masih memuat URL /artwork: %s", body)
 	}
 
 	var data mediaTitlesData
@@ -205,9 +202,6 @@ func TestTitleMediaURLs(t *testing.T) {
 	if rec.Code != http.StatusOK || env.Code != response.CodeSuccess {
 		t.Fatalf("GET /titles/10: status/code = %d/%d, mau 200/0 (body=%s)", rec.Code, env.Code, rec.Body.String())
 	}
-	if body := rec.Body.String(); strings.Contains(body, "/artwork/") {
-		t.Fatalf("GET /titles/10 masih memuat URL /artwork: %s", body)
-	}
 	var detail struct {
 		ID          int64   `json:"id"`
 		PosterURL   *string `json:"poster_url"`
@@ -226,9 +220,6 @@ func TestTitleMediaURLs(t *testing.T) {
 	if rec.Code != http.StatusOK || env.Code != response.CodeSuccess {
 		t.Fatalf("GET /titles/10/episodes: status/code = %d/%d, mau 200/0 (body=%s)", rec.Code, env.Code, rec.Body.String())
 	}
-	if body := rec.Body.String(); strings.Contains(body, "/artwork/") {
-		t.Fatalf("GET /titles/10/episodes masih memuat URL /artwork: %s", body)
-	}
 	var episodes struct {
 		Items []struct {
 			ID       int64   `json:"id"`
@@ -243,16 +234,13 @@ func TestTitleMediaURLs(t *testing.T) {
 		t.Fatalf("still_url episode pertama = %v, mau %s", still, wantStill)
 	}
 	if still := episodes.Items[1].StillURL; still != nil {
-		t.Fatalf("still_url episode tanpa still = %v, mau null (tanpa fallback /artwork)", *still)
+		t.Fatalf("still_url episode tanpa still = %v, mau null", *still)
 	}
 
 	// Hasil search: poster judul dan still episode memakai aturan yang sama.
 	env, rec = f.do(http.MethodGet, "/search?q=poster", token, nil)
 	if rec.Code != http.StatusOK || env.Code != response.CodeSuccess {
 		t.Fatalf("GET /search?q=poster: status/code = %d/%d, mau 200/0 (body=%s)", rec.Code, env.Code, rec.Body.String())
-	}
-	if body := rec.Body.String(); strings.Contains(body, "/artwork/") {
-		t.Fatalf("GET /search masih memuat URL /artwork: %s", body)
 	}
 	var searchResult struct {
 		Titles []struct {
@@ -299,14 +287,11 @@ func TestTitleMediaURLs(t *testing.T) {
 	}
 
 	// Generation aktif tanpa label: tidak ada prefix yang bisa dipakai, jadi
-	// seluruh URL artwork menjadi null — bukan fallback ke /artwork.
+	// seluruh URL gambar menjadi null.
 	f.exec(`UPDATE generations SET label = '' WHERE id = 1`)
 	env, rec = f.do(http.MethodGet, "/titles", token, nil)
 	if rec.Code != http.StatusOK || env.Code != response.CodeSuccess {
 		t.Fatalf("GET /titles tanpa label: status/code = %d/%d, mau 200/0 (body=%s)", rec.Code, env.Code, rec.Body.String())
-	}
-	if body := rec.Body.String(); strings.Contains(body, "/artwork/") {
-		t.Fatalf("GET /titles tanpa label memakai fallback /artwork: %s", body)
 	}
 	var noLabel mediaTitlesData
 	f.decode(env, &noLabel)

@@ -57,14 +57,13 @@ func newNotifyRig(t *testing.T, client *http.Client, n notify.Notifier, provs ..
 	}
 
 	syncer, err := New(Config{
-		Store:       st,
-		Media:       media,
-		Downloader:  download.New(download.Options{Client: client, Retries: 0}),
-		Providers:   provs,
-		ArtworkRoot: filepath.Join(t.TempDir(), "artwork"),
-		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
-		HTTPClient:  client,
-		Notifier:    n,
+		Store:      st,
+		Media:      media,
+		Downloader: download.New(download.Options{Client: client, Retries: 0}),
+		Providers:  provs,
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		HTTPClient: client,
+		Notifier:   n,
 	})
 	if err != nil {
 		t.Fatalf("syncjob.New: %v", err)

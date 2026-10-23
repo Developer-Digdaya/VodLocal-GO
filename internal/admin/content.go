@@ -721,7 +721,7 @@ const (
 // building, retired, maupun failed): setiap direktori generation di media root,
 // seluruh baris tabel generations (renditions, subtitles, dan generation_items
 // ikut lewat ON DELETE CASCADE), playable/episode/title yang tidak lagi punya
-// media, lalu cache artwork.
+// media.
 //
 // Karena destruktif, permintaan ditolak selama masih ada sync run non-terminal
 // (is_active = 1) dan wajib menyertakan field confirm=PURGE. Tabel di luar
@@ -730,8 +730,8 @@ const (
 //
 // Kegagalan menghapus folder menghentikan proses sebelum database diubah, agar
 // baris generation tidak hilang sementara medianya masih tertinggal di disk.
-// Langkah best-effort (menyapu direktori tak tercatat, artwork, dan pembersihan
-// katalog) hanya dicatat ke log dan tidak membatalkan sisa proses.
+// Langkah best-effort (menyapu direktori tak tercatat dan pembersihan katalog)
+// hanya dicatat ke log dan tidak membatalkan sisa proses.
 func (a *Admin) handleContentPurge(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -806,14 +806,12 @@ func (a *Admin) handleContentPurge(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 8. Kosongkan cache artwork supaya poster konten yang sudah hilang tidak
-	// tampil lagi.
-	a.purgeArtwork()
+	// 8. Poster ikut terhapus bersama folder generation; tidak ada cache
+	// gambar terpisah.
 
 	a.log.Info("admin: semua batch dihapus",
 		"generations", generations,
 		"catalog_rows", catalogRows,
-		"artwork_root", a.artworkRoot,
 		"username", a.sessionUsername(r),
 	)
 	a.flashTo(r, "success", fmt.Sprintf(
@@ -845,9 +843,8 @@ func (a *Admin) generationLabels(ctx context.Context) ([]string, error) {
 //
 // Langkah ini best-effort: masalah filesystem hanya dicatat ke log agar
 // penghapusan katalog tetap berjalan. Pengelola media yang tidak memenuhi
-// MediaRooter dilewati, dan direktori lain di media root (mis. artwork yang
-// letaknya di bawah media root) tidak disentuh karena namanya tidak memakai
-// awalan generation.
+// MediaRooter dilewati, dan direktori lain di media root tidak disentuh karena
+// namanya tidak memakai awalan generation.
 func (a *Admin) purgeUnrecordedDirs(recorded map[string]struct{}) {
 	rooter, ok := a.media.(MediaRooter)
 	if !ok {
@@ -889,24 +886,6 @@ func (a *Admin) purgeUnrecordedDirs(recorded map[string]struct{}) {
 // staging build.
 func hasGenerationPrefix(name string) bool {
 	return strings.HasPrefix(name, generationDirPrefix) || strings.HasPrefix(name, stagingDirPrefix)
-}
-
-// purgeArtwork mengosongkan folder artwork lalu membuatnya kembali kosong.
-//
-// Best-effort: kegagalan hanya dicatat (Warn) karena katalog sudah terlanjur
-// dihapus dan artwork yang tersisa tidak merusak konsistensi database.
-func (a *Admin) purgeArtwork() {
-	root := strings.TrimSpace(a.artworkRoot)
-	if root == "" {
-		return
-	}
-	if err := os.RemoveAll(root); err != nil {
-		a.log.Warn("admin: gagal menghapus folder artwork", "root", root, "err", err)
-		return
-	}
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		a.log.Warn("admin: gagal membuat ulang folder artwork", "root", root, "err", err)
-	}
 }
 
 // renderContentMessage menampilkan halaman /sync dengan pesan pada status

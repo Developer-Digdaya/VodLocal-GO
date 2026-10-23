@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -52,25 +51,10 @@ func tableCount(f *fixture, t *testing.T, table string) int {
 	return count
 }
 
-// makeArtworkFile membuat satu berkas artwork di bawah root dan mengembalikan
-// path-nya.
-func makeArtworkFile(t *testing.T, root, rel string) string {
-	t.Helper()
-
-	file := filepath.Join(root, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-		t.Fatalf("buat direktori artwork %s: %v", filepath.Dir(file), err)
-	}
-	if err := os.WriteFile(file, []byte("poster"), 0o644); err != nil {
-		t.Fatalf("tulis artwork %s: %v", file, err)
-	}
-	return file
-}
-
 // TestContentPurge memastikan aksi "Remove all batch" menghapus seluruh
 // storage dan katalog: folder generation (termasuk yang tidak tercatat),
-// baris generations beserta katalog turunannya, dan cache artwork — tanpa
-// menyentuh provider, perangkat, atau pengguna.
+// baris generations beserta katalog turunannya — tanpa menyentuh provider,
+// perangkat, atau pengguna.
 func TestContentPurge(t *testing.T) {
 	f := newFixture(t)
 	f.login()
@@ -87,9 +71,7 @@ func TestContentPurge(t *testing.T) {
 		makeMediaDir(t, f.mediaRoot, "gen-000099"),
 	}
 	// Direktori lain di media root bukan milik generation, jadi tidak disapu.
-	foreign := makeMediaDir(t, f.mediaRoot, "artwork-cache")
-
-	artwork := makeArtworkFile(t, f.artworkRoot, "dens_tv/series/1/poster.jpg")
+	foreign := makeMediaDir(t, f.mediaRoot, "foreign-cache")
 
 	// Tabel di luar storage/katalog harus tetap utuh setelah purge.
 	untouched := make(map[string]int, 5)
@@ -130,16 +112,6 @@ func TestContentPurge(t *testing.T) {
 		}
 	}
 
-	// Artwork root dikosongkan tetapi tetap ada.
-	requireNotExist(t, artwork)
-	entries, err := os.ReadDir(f.artworkRoot)
-	if err != nil {
-		t.Fatalf("artwork root tidak ada setelah purge: %v", err)
-	}
-	if len(entries) != 0 {
-		t.Fatalf("artwork root masih berisi %d entri, mau kosong", len(entries))
-	}
-
 	// Flash sukses menyebut jumlah generation dan baris katalog.
 	page := f.get("/sync")
 	if page.Code != http.StatusOK {
@@ -160,7 +132,6 @@ func TestContentPurgeMenolakRunAktif(t *testing.T) {
 	f.login()
 
 	dir := makeMediaDir(t, f.mediaRoot, "gen-000042")
-	artwork := makeArtworkFile(t, f.artworkRoot, "dens_tv/series/1/poster.jpg")
 
 	f.exec(`INSERT INTO sync_runs (id, trigger_source, scope, status, phase, created_at)
 	        VALUES (9, 'manual', 'full', 'running', 'segments', '2026-10-20T11:00:00Z')`)
@@ -185,9 +156,6 @@ func TestContentPurgeMenolakRunAktif(t *testing.T) {
 	}
 	if _, err := os.Stat(dir); err != nil {
 		t.Errorf("folder generation ikut terhapus: %v", err)
-	}
-	if _, err := os.Stat(artwork); err != nil {
-		t.Errorf("artwork ikut terhapus: %v", err)
 	}
 }
 
@@ -250,21 +218,6 @@ func TestContentPurgePerluCSRFDanLogin(t *testing.T) {
 	}
 	if got := tableCount(anon, t, "generations"); got != 3 {
 		t.Fatalf("tanpa login: generations = %d, mau 3", got)
-	}
-}
-
-// TestContentPurgeTanpaArtworkRoot memastikan ArtworkRoot opsional: purge tetap
-// berhasil walau panel tidak dikonfigurasi dengan akar artwork.
-func TestContentPurgeTanpaArtworkRoot(t *testing.T) {
-	f := newFixture(t, withoutArtworkRoot())
-	f.login()
-
-	rec := f.post("/content/purge", url.Values{"confirm": {"PURGE"}})
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("status = %d, mau 303 (body=%s)", rec.Code, rec.Body.String())
-	}
-	if got := tableCount(f, t, "generations"); got != 0 {
-		t.Fatalf("generations = %d, mau 0", got)
 	}
 }
 

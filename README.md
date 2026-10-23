@@ -217,7 +217,6 @@ Semua konfigurasi memakai environment dengan prefix `VODLOCAL_`. Contoh lengkap 
 | `VODLOCAL_HTTP_ADDR` | `:8080` | Alamat listen; produksi memakai `:80` |
 | `VODLOCAL_DB_PATH` | `data/app.db` | File SQLite |
 | `VODLOCAL_MEDIA_ROOT` | `data/media` | Root generation media |
-| `VODLOCAL_ARTWORK_ROOT` | `data/media/artwork` | Root artwork legacy; poster baru ada di generation |
 | `VODLOCAL_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `VODLOCAL_SYNC_MAX_PARALLEL` | `8` | Unduhan segmen paralel (1–64) |
 | `VODLOCAL_SYNC_RETRIES` | `3` | Percobaan ulang (0–10) |
@@ -407,7 +406,7 @@ GET /api/v1/titles/{id}
 
 ### 9.4 Kenapa `/playables/{id}` dipanggil dulu?
 
-- Mendapat `title`, `episode`, `duration_seconds`, poster/artwork.
+- Mendapat `title`, `episode`, `duration_seconds`, poster/backdrop.
 - Mendapat daftar `variants` yang benar-benar `ready`.
 - Mendapat daftar `subtitles`.
 - Mendapat `master_playlist_url`.
@@ -573,7 +572,7 @@ tidak menghapus, tidak menyembunyikan, dan tidak memindahkan konten batch lama.
   menghapus satu generation beserta direktorinya; katalog yatim ikut dibersihkan. Bisa
   dipakai untuk membuang batch yang sudah tidak diperlukan.
 - **Semua konten** — `POST /content/purge` (`confirm=PURGE`) menghapus seluruh generation,
-  sisa folder `gen-*`/`.building-*`, katalog yatim, dan artwork legacy.
+  sisa folder `gen-*`/`.building-*`, dan katalog yatim.
 - **Tidak ada masa tenggang dan tidak ada penghapusan otomatis.** Batch lama tetap di disk
   sampai admin menghapusnya. Penghapusan berlaku langsung; playback yang sedang berjalan
   akan gagal pada permintaan berikutnya (`404`).

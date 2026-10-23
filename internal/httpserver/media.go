@@ -24,8 +24,6 @@ import (
 type MediaResolver interface {
 	// ResolveMedia memetakan rel di dalam generation (mis. "gen-000042").
 	ResolveMedia(ctx context.Context, generation, rel string) (string, error)
-	// ResolveArtwork memetakan rel di dalam direktori artwork.
-	ResolveArtwork(ctx context.Context, rel string) (string, error)
 }
 
 // Error yang bisa dikembalikan implementasi MediaResolver untuk menentukan
@@ -38,8 +36,6 @@ var (
 )
 
 const (
-	// artworkCacheControl adalah Cache-Control /artwork/* (api-spec §13).
-	artworkCacheControl = "public, max-age=86400"
 	// segmentCacheControl dipakai segmen yang isinya tidak pernah berubah.
 	segmentCacheControl = "public, max-age=31536000, immutable"
 	// playlistCacheControl dipakai playlist dan subtitle.
@@ -56,17 +52,9 @@ func MediaHandler(res MediaResolver) http.Handler {
 	return &fileHandler{res: res}
 }
 
-// ArtworkHandler melayani GET /artwork/* tanpa autentikasi dan dengan cache
-// sehari (api-spec §13).
-func ArtworkHandler(res MediaResolver) http.Handler {
-	return &fileHandler{res: res, artwork: true}
-}
-
-// fileHandler melayani satu kelas berkas dari MediaResolver: media generation
-// atau artwork.
+// fileHandler melayani berkas dari media generation.
 type fileHandler struct {
-	res     MediaResolver
-	artwork bool
+	res MediaResolver
 }
 
 // ServeHTTP mengubah request menjadi satu berkas di disk lalu mengirimnya.
@@ -75,21 +63,13 @@ func (h *fileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeStatus(w, http.StatusInternalServerError)
 		return
 	}
-	generation, rel, ok := mediaTarget(r, h.artwork)
+	generation, rel, ok := mediaTarget(r)
 	if !ok {
 		writeStatus(w, http.StatusBadRequest)
 		return
 	}
 
-	var (
-		path string
-		err  error
-	)
-	if h.artwork {
-		path, err = h.res.ResolveArtwork(r.Context(), rel)
-	} else {
-		path, err = h.res.ResolveMedia(r.Context(), generation, rel)
-	}
+	path, err := h.res.ResolveMedia(r.Context(), generation, rel)
 	if err != nil {
 		writeStatus(w, resolveStatus(err))
 		return
@@ -110,7 +90,7 @@ func (h *fileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ext := strings.ToLower(filepath.Ext(path))
 	w.Header().Set("Content-Type", mediaContentType(ext))
-	if cacheControl := cacheControl(ext, h.artwork); cacheControl != "" {
+	if cacheControl := cacheControl(ext); cacheControl != "" {
 		w.Header().Set("Cache-Control", cacheControl)
 	}
 	http.ServeContent(w, r, info.Name(), info.ModTime(), file)
@@ -119,16 +99,7 @@ func (h *fileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // mediaTarget mengambil generation dan path relatif dari URL params chi, lalu
 // memvalidasinya. Bila handler dipasang di luar router chi (mis. dipanggil
 // langsung pada test), nilainya diturunkan dari URL path.
-func mediaTarget(r *http.Request, artwork bool) (generation, rel string, ok bool) {
-	if artwork {
-		rel = chi.URLParam(r, "*")
-		if rel == "" {
-			rel = strings.TrimPrefix(r.URL.Path, "/artwork/")
-		}
-		rel, ok = safeRel(rel)
-		return "", rel, ok
-	}
-
+func mediaTarget(r *http.Request) (generation, rel string, ok bool) {
 	generation = chi.URLParam(r, "generation")
 	rel = chi.URLParam(r, "*")
 	if generation == "" || rel == "" {
@@ -227,12 +198,8 @@ func mediaContentType(ext string) string {
 }
 
 // cacheControl mengembalikan nilai Cache-Control untuk ekstensi tersebut
-// (api-spec §13). Artwork selalu memakai cache sehari; tipe yang tidak diatur
-// dokumen tidak diberi header.
-func cacheControl(ext string, artwork bool) string {
-	if artwork {
-		return artworkCacheControl
-	}
+// (api-spec §13). Tipe yang tidak diatur dokumen tidak diberi header.
+func cacheControl(ext string) string {
 	switch ext {
 	case ".ts", ".m4s":
 		// Segmen tidak pernah berubah isinya: generation baru berarti path baru.

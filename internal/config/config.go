@@ -25,7 +25,6 @@ const (
 	envHTTPAddr                = envPrefix + "HTTP_ADDR"
 	envDBPath                  = envPrefix + "DB_PATH"
 	envMediaRoot               = envPrefix + "MEDIA_ROOT"
-	envArtworkRoot             = envPrefix + "ARTWORK_ROOT"
 	envLogLevel                = envPrefix + "LOG_LEVEL"
 	envSyncMaxParallel         = envPrefix + "SYNC_MAX_PARALLEL"
 	envSyncRetries             = envPrefix + "SYNC_RETRIES"
@@ -51,7 +50,6 @@ const (
 	defaultHTTPAddr                = ":8080"
 	defaultDBPath                  = "data/app.db"
 	defaultMediaRoot               = "data/media"
-	defaultArtworkRoot             = "data/media/artwork"
 	defaultLogLevel                = "info"
 	defaultSyncMaxParallel         = 8
 	defaultSyncRetries             = 3
@@ -87,7 +85,6 @@ type Config struct {
 	HTTPAddr                string
 	DBPath                  string
 	MediaRoot               string
-	ArtworkRoot             string
 	LogLevel                string
 	SyncMaxParallel         int
 	SyncRetries             int
@@ -128,7 +125,6 @@ func LoadFrom(getenv func(string) string) (Config, error) {
 		HTTPAddr:                readString(getenv, envHTTPAddr, defaultHTTPAddr),
 		DBPath:                  readString(getenv, envDBPath, defaultDBPath),
 		MediaRoot:               readString(getenv, envMediaRoot, defaultMediaRoot),
-		ArtworkRoot:             readString(getenv, envArtworkRoot, defaultArtworkRoot),
 		LogLevel:                strings.ToLower(readString(getenv, envLogLevel, defaultLogLevel)),
 		SyncRetryBackoff:        mustDuration(&errs, getenv, envSyncRetryBackoff, defaultSyncRetryBackoff),
 		SessionSecret:           readString(getenv, envSessionSecret, defaultSessionSecret),
@@ -149,22 +145,14 @@ func LoadFrom(getenv func(string) string) (Config, error) {
 		StorageBlockSyncPercent: mustInt(&errs, getenv, envStorageBlockSyncPercent, defaultStorageBlockSyncPercent),
 	}
 
-	// MediaRoot dan ArtworkRoot dipakai untuk akses filesystem, jadi harus
-	// absolut agar tidak bergantung pada working directory process.
+	// MediaRoot dipakai untuk akses filesystem, jadi harus absolut agar tidak
+	// bergantung pada working directory process.
 	if cfg.MediaRoot != "" {
 		abs, err := filepath.Abs(cfg.MediaRoot)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: gagal resolve path %q: %w", envMediaRoot, cfg.MediaRoot, err))
 		} else {
 			cfg.MediaRoot = abs
-		}
-	}
-	if cfg.ArtworkRoot != "" {
-		abs, err := filepath.Abs(cfg.ArtworkRoot)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: gagal resolve path %q: %w", envArtworkRoot, cfg.ArtworkRoot, err))
-		} else {
-			cfg.ArtworkRoot = abs
 		}
 	}
 
@@ -187,9 +175,6 @@ func validate(cfg Config) error {
 	}
 	if cfg.MediaRoot == "" {
 		errs = append(errs, fmt.Errorf("%s: tidak boleh kosong", envMediaRoot))
-	}
-	if cfg.ArtworkRoot == "" {
-		errs = append(errs, fmt.Errorf("%s: tidak boleh kosong", envArtworkRoot))
 	}
 
 	switch cfg.LogLevel {

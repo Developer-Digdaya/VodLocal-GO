@@ -1,5 +1,5 @@
 // Package syncjob menjalankan sinkronisasi penuh: katalog dari setiap provider
-// upstream, playlist HLS beserta segmennya, subtitle dan artwork.
+// upstream, playlist HLS beserta segmennya, subtitle dan gambar poster.
 //
 // Satu kali Run membangun satu "generation" media baru di direktori staging
 // (mediafs), lalu menerbitkannya secara atomik setelah seluruh berkas
@@ -15,7 +15,8 @@
 //  5. tarik katalog tiap provider dan simpan titles/episodes/playables/renditions,
 //  6. unduh playlist + segmen setiap rendition,
 //  7. unduh subtitle,
-//  8. unduh artwork (kegagalan di sini tidak menggagalkan rendition),
+//  8. unduh poster/backdrop ke staging generation (kegagalan di sini tidak
+//     menggagalkan rendition),
 //  9. verifikasi berkas setiap rendition,
 //  10. bila tidak ada rendition siap: Abort, generation & run 'failed',
 //  11. Commit lalu tukar generation aktif dalam satu transaksi,
@@ -27,7 +28,7 @@
 //
 // Semua timestamp disimpan sebagai TEXT ISO-8601 UTC, dan semua path yang
 // ditulis ke database bersifat relatif (terhadap root generation untuk media,
-// terhadap ArtworkRoot untuk artwork).
+// terhadap media generation).
 package syncjob
 
 import (
@@ -91,14 +92,10 @@ type Config struct {
 	Store *store.Store
 	// Media mengelola direktori generation; wajib.
 	Media *mediafs.Manager
-	// Downloader dipakai untuk segmen, subtitle dan artwork. Bila nil, Syncer
-	// membuat satu dengan opsi default memakai HTTPClient.
+	// Downloader dipakai untuk segmen, subtitle dan gambar.
 	Downloader *download.Downloader
 	// Providers adalah sumber katalog; boleh kosong.
 	Providers []provider.Provider
-	// ArtworkRoot adalah akar penyimpanan poster/backdrop. Bila kosong dipakai
-	// <Media.Root()>/artwork.
-	ArtworkRoot string
 	// Logger menerima log progres. Bila nil dipakai slog.Default().
 	Logger *slog.Logger
 	// Now memasok waktu sekarang. Bila nil dipakai time.Now.
@@ -118,7 +115,6 @@ type Syncer struct {
 	media     *mediafs.Manager
 	dl        *download.Downloader
 	providers []provider.Provider
-	artwork   string
 	log       *slog.Logger
 	nowFn     func() time.Time
 	client    *http.Client
@@ -164,18 +160,6 @@ func New(cfg Config) (*Syncer, error) {
 		nowFn = time.Now
 	}
 
-	artwork := strings.TrimSpace(cfg.ArtworkRoot)
-	if artwork == "" {
-		artwork = filepath.Join(cfg.Media.Root(), "artwork")
-	}
-	absArtwork, err := filepath.Abs(artwork)
-	if err != nil {
-		return nil, fmt.Errorf("syncjob: resolve artwork root %q: %w", artwork, err)
-	}
-	if err := os.MkdirAll(absArtwork, 0o755); err != nil {
-		return nil, fmt.Errorf("syncjob: buat artwork root %q: %w", absArtwork, err)
-	}
-
 	providers := make([]provider.Provider, 0, len(cfg.Providers))
 	for _, p := range cfg.Providers {
 		if p == nil {
@@ -189,7 +173,6 @@ func New(cfg Config) (*Syncer, error) {
 		media:     cfg.Media,
 		dl:        dl,
 		providers: providers,
-		artwork:   absArtwork,
 		log:       logger,
 		nowFn:     nowFn,
 		client:    client,
@@ -346,9 +329,9 @@ func (s *Syncer) execute(ctx context.Context, st *runState) (Result, error) {
 		return fail(err)
 	}
 
-	// Langkah 8: artwork.
-	s.setRunPhase(dbCtx, st, "running", "artwork")
-	if err := s.fetchArtwork(ctx, dbCtx, st); err != nil {
+	// Langkah 8: gambar poster/backdrop di dalam generation.
+	s.setRunPhase(dbCtx, st, "running", "images")
+	if err := s.fetchImages(ctx, dbCtx, st); err != nil {
 		return fail(err)
 	}
 
@@ -519,7 +502,7 @@ type runState struct {
 	rends        []*renditionRecord
 	subs         []subtitleTask
 	maxShortSide int
-	arts         []artworkTask
+	images       []imageTask
 	fileCnt      int
 	total        int64
 }
@@ -551,8 +534,8 @@ type subtitleTask struct {
 	sub        provider.Subtitle
 }
 
-// artworkTask adalah satu gambar yang harus diunduh.
-type artworkTask struct {
+// imageTask adalah satu poster/backdrop yang harus diunduh ke generation.
+type imageTask struct {
 	titleID int64
 	relPath string
 	url     string
@@ -756,19 +739,19 @@ RETURNING id`,
 		}
 	}
 
-	artBase := path.Join(safePathComponent(code), safePathComponent(t.ExternalID))
+	imageBase := path.Join(safePathComponent(code), safePathComponent(t.ExternalID))
 	if t.PosterURL != "" {
-		st.arts = append(st.arts, artworkTask{
+		st.images = append(st.images, imageTask{
 			titleID: titleID,
-			relPath: path.Join(artBase, "poster."+extFromURL(t.PosterURL, "jpg")),
+			relPath: path.Join(imageBase, "poster."+extFromURL(t.PosterURL, "jpg")),
 			url:     t.PosterURL,
 			column:  "poster_path",
 		})
 	}
 	if t.BackdropURL != "" {
-		st.arts = append(st.arts, artworkTask{
+		st.images = append(st.images, imageTask{
 			titleID: titleID,
-			relPath: path.Join(artBase, "backdrop."+extFromURL(t.BackdropURL, "jpg")),
+			relPath: path.Join(imageBase, "backdrop."+extFromURL(t.BackdropURL, "jpg")),
 			url:     t.BackdropURL,
 			column:  "backdrop_path",
 		})
@@ -1105,20 +1088,21 @@ ON CONFLICT(playable_id, generation_id, lang) DO UPDATE SET
 	return nil
 }
 
-// fetchArtwork mengunduh poster/backdrop. Kegagalan hanya dicatat di log.
-func (s *Syncer) fetchArtwork(ctx context.Context, dbCtx context.Context, st *runState) error {
-	for _, task := range st.arts {
+// fetchImages mengunduh poster/backdrop ke staging generation. Kegagalan hanya
+// dicatat di log.
+func (s *Syncer) fetchImages(ctx context.Context, dbCtx context.Context, st *runState) error {
+	for _, task := range st.images {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 
-		abs := filepath.Join(s.artwork, filepath.FromSlash(task.relPath))
+		abs := filepath.Join(st.dir, filepath.FromSlash(task.relPath))
 		res, err := s.dl.Download(ctx, []download.Job{{URL: task.url, Dest: abs}})
 		if err != nil {
 			if cerr := ctx.Err(); cerr != nil {
 				return cerr
 			}
-			s.log.Warn("artwork gagal diunduh, dilewati",
+			s.log.Warn("gambar gagal diunduh, dilewati",
 				"title", task.titleID, "url", task.url, "error", err)
 			continue
 		}
@@ -1128,7 +1112,7 @@ func (s *Syncer) fetchArtwork(ctx context.Context, dbCtx context.Context, st *ru
 			`UPDATE titles SET `+task.column+` = ?, updated_at = ? WHERE id = ?`,
 			task.relPath, s.stamp(), task.titleID,
 		); err != nil {
-			return fmt.Errorf("syncjob: simpan path artwork title %d: %w", task.titleID, err)
+			return fmt.Errorf("syncjob: simpan path gambar title %d: %w", task.titleID, err)
 		}
 	}
 	return nil

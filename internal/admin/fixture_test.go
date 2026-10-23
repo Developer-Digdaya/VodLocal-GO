@@ -49,10 +49,9 @@ type fixture struct {
 	transfer *transfer.Service
 	lister   *stubLister
 	ingest   *stubIngest
-	// mediaRoot dan artworkRoot adalah direktori sementara yang dipakai uji
-	// penghapusan storage dan aksi "Remove all batch".
-	mediaRoot   string
-	artworkRoot string
+	// mediaRoot adalah direktori sementara yang dipakai uji penghapusan
+	// storage.
+	mediaRoot string
 	// jar adalah cookie jar sederhana: nama cookie → cookie terakhir.
 	jar map[string]*http.Cookie
 }
@@ -218,14 +217,6 @@ func withoutContent() fixtureOption {
 	}
 }
 
-// withoutArtworkRoot memasang panel tanpa akar artwork, sehingga aksi "Remove
-// all batch" tidak menyentuh artwork sama sekali.
-func withoutArtworkRoot() fixtureOption {
-	return func(cfg *admin.Config) {
-		cfg.ArtworkRoot = ""
-	}
-}
-
 // newFixture menyiapkan database, migrasi, data contoh, dan panel admin.
 func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 	t.Helper()
@@ -244,13 +235,12 @@ func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 	}
 
 	f := &fixture{
-		t:           t,
-		store:       st,
-		db:          st.Write(),
-		now:         time.Date(2026, 10, 20, 11, 30, 0, 0, time.UTC),
-		mediaRoot:   t.TempDir(),
-		artworkRoot: t.TempDir(),
-		jar:         make(map[string]*http.Cookie),
+		t:         t,
+		store:     st,
+		db:        st.Write(),
+		now:       time.Date(2026, 10, 20, 11, 30, 0, 0, time.UTC),
+		mediaRoot: t.TempDir(),
+		jar:       make(map[string]*http.Cookie),
 	}
 	f.seed()
 
@@ -275,17 +265,16 @@ func newFixture(t *testing.T, opts ...fixtureOption) *fixture {
 	f.transfer = transferSvc
 
 	cfg := admin.Config{
-		Store:       st,
-		Syncer:      f.syncer,
-		Media:       f.media,
-		Sessions:    f.sessions,
-		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Now:         func() time.Time { return f.now },
-		Version:     "test",
-		Lister:      f.lister,
-		Ingest:      f.ingest,
-		ArtworkRoot: f.artworkRoot,
-		Transfer:    f.transfer,
+		Store:    st,
+		Syncer:   f.syncer,
+		Media:    f.media,
+		Sessions: f.sessions,
+		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Now:      func() time.Time { return f.now },
+		Version:  "test",
+		Lister:   f.lister,
+		Ingest:   f.ingest,
+		Transfer: f.transfer,
 	}
 	for _, opt := range opts {
 		opt(&cfg)
