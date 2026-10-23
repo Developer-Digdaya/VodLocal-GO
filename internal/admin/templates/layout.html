@@ -130,6 +130,8 @@ dialog.modal::backdrop { background: rgba(15, 23, 32, .45); }
 .dialog-foot { display: flex; gap: .5rem; justify-content: flex-end; padding: .7rem 1rem; border-top: 1px solid #e2e6ea; background: #f7f9fb; }
 .dialog-foot .spacer { flex: 1 1 auto; }
 .dialog-body { flex: 1 1 auto; overflow-y: auto; padding: .75rem 1rem 1rem; min-height: 0; }
+#online-panel { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+#online-panel[hidden] { display: none; }
 .tabs { display: flex; gap: .3rem; padding: .6rem 1rem 0; background: #f7f9fb; }
 .tabs .tab { background: #fff; color: #12324f; border: 1px solid #ccd3db; border-radius: .35rem .35rem 0 0; }
 .tabs .tab.active { background: #12324f; border-color: #12324f; color: #fff; }
