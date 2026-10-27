@@ -331,12 +331,12 @@ Semua response JSON memakai envelope:
 ditolak `409`; untuk tablet yang data lokalnya dihapus, hapus perangkat dari panel
 `/devices` lebih dulu, lalu tablet register ulang dengan MAC yang sama.
 
-Spesifikasi lengkap, termasuk contoh request/response dan error, tersedia di
+Spesifikasi **API mobile** (endpoint panel admin tidak termasuk) tersedia di
 [`openapi.json`](./openapi.json) (OpenAPI 3.0.0). Impor langsung ke Postman.
 
-`postman_collection.json` memakai collection variable `baseUrl`, `bearerToken`, dan
-`apiKey`. Isi nilainya sekali di tab **Variables** collection; seluruh request memakai
-token yang sama.
+[`postman_collection.json`](./postman_collection.json) berisi **API mobile** (tanpa endpoint panel admin) dan memakai
+collection variable `baseUrl`, `bearerToken`, dan `apiKey`. Isi nilainya sekali di tab
+**Variables** collection; seluruh request memakai token yang sama.
 
 **Generation = batch unduhan, bukan gerbang visibilitas**
 
@@ -860,7 +860,7 @@ internal/notify/     webhook & Telegram
 internal/devseed/    pembuat konten sintetis
 deploy/              systemd unit + contoh env
 scripts/             run-local.sh + deploy-linux.sh
-openapi.json         spesifikasi OpenAPI 3.0.0
+openapi.json         spesifikasi OpenAPI 3.0.0 untuk API mobile (tanpa admin)
 ```
 
 ---
