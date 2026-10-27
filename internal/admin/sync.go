@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"vodlocal/internal/catalog"
+	"vodlocal/internal/ingest"
 	"vodlocal/internal/response"
 )
 
@@ -279,6 +282,7 @@ SELECT CAST(COALESCE(AVG(progress_percent), 0) AS INTEGER),
 // generationItemRow adalah satu baris generation_items: progres ingest satu
 // series di dalam sebuah generation.
 type generationItemRow struct {
+	ID               int64  `json:"id"`
 	SeriesTitle      string `json:"series_title"`
 	SeriesExternalID string `json:"series_external_id"`
 	Category         string `json:"category"`
@@ -297,7 +301,7 @@ type generationItemRow struct {
 
 // generationItemsQuery membaca progres per series sebuah generation (§10.3).
 const generationItemsQuery = `
-SELECT series_title, series_external_id, category, status,
+SELECT id, series_title, series_external_id, category, status,
        total_episodes, episodes_done, episodes_failed,
        renditions_ready, renditions_failed, bytes_downloaded,
        progress_percent, current_step, current_episode, error_message
@@ -327,7 +331,7 @@ LIMIT ? OFFSET ?`, generationID, limit, offset)
 			item                generationItemRow
 			step, episode, note sql.NullString
 		)
-		if err := rows.Scan(&item.SeriesTitle, &item.SeriesExternalID, &item.Category, &item.Status,
+		if err := rows.Scan(&item.ID, &item.SeriesTitle, &item.SeriesExternalID, &item.Category, &item.Status,
 			&item.TotalEpisodes, &item.EpisodesDone, &item.EpisodesFailed,
 			&item.RenditionsReady, &item.RenditionsFailed, &item.BytesDownloaded,
 			&item.ProgressPercent, &step, &episode, &note); err != nil {
@@ -428,6 +432,12 @@ type generationItemsView struct {
 	RunID  int64
 	Status string
 	Active bool
+	// CSRF dipakai tombol retry per baris; fragmen ini juga dirender lewat
+	// polling /sync/{id}/items, jadi token harus ikut di view.
+	CSRF string
+	// CanRetry menandai run terminal yang menyimpan pilihan dan punya konten
+	// gagal, sehingga tombol retry boleh tampil.
+	CanRetry bool
 	pageInfo
 	Items   []generationItemRow
 	Summary generationItemSummary
@@ -616,6 +626,8 @@ type syncDetailData struct {
 	Run        *syncRunView
 	StatusView syncStatusView
 	ItemsView  generationItemsView
+	// CanRetry menampilkan tombol retry batch untuk run gagal/parsial.
+	CanRetry bool
 }
 
 // handleSyncDetail melayani GET /sync/{id}.
@@ -644,11 +656,17 @@ func (a *Admin) handleSyncDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	canRetry := a.syncCanRetry(ctx, run)
+	pageBase := a.base(w, r, fmt.Sprintf("Sync #%d", run.ID), "sync")
+	itemsView.CSRF = pageBase.CSRF
+	itemsView.CanRetry = canRetry
+
 	a.renderPage(w, r, "sync_detail", syncDetailData{
-		base:       a.base(w, r, fmt.Sprintf("Sync #%d", run.ID), "sync"),
+		base:       pageBase,
 		Run:        run,
 		StatusView: a.syncStatusView(ctx, run),
 		ItemsView:  itemsView,
+		CanRetry:   canRetry,
 	}, http.StatusOK)
 }
 
@@ -749,6 +767,8 @@ func (a *Admin) handleSyncItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	view.CSRF = a.csrfToken(w, r)
+	view.CanRetry = a.syncCanRetry(ctx, run)
 	a.renderPartial(w, "generation_items", view)
 }
 
@@ -790,4 +810,189 @@ func (a *Admin) handleSyncCancel(w http.ResponseWriter, r *http.Request) {
 
 	a.flashTo(r, "success", fmt.Sprintf("Permintaan pembatalan sinkronisasi #%d dikirim.", id))
 	http.Redirect(w, r, fmt.Sprintf("/sync/%d", id), http.StatusSeeOther)
+}
+
+// syncCanRetry melaporkan apakah tombol retry boleh tampil. Kegagalan query
+// hanya dicatat dan dianggap tidak bisa retry.
+func (a *Admin) syncCanRetry(ctx context.Context, run *syncRunView) bool {
+	ok, err := a.runCanRetry(ctx, run)
+	if err != nil {
+		a.log.Warn("admin: gagal memeriksa status retry", "run_id", run.ID, "err", err)
+		return false
+	}
+	return ok
+}
+
+// runCanRetry memeriksa apakah run menyimpan pilihan dan punya konten gagal.
+func (a *Admin) runCanRetry(ctx context.Context, run *syncRunView) (bool, error) {
+	if run == nil || !run.terminal() {
+		return false, nil
+	}
+
+	var selection string
+	if err := a.read.QueryRowContext(ctx,
+		`SELECT COALESCE(selection_json, '') FROM sync_runs WHERE id = ?`, run.ID,
+	).Scan(&selection); err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(selection) == "" {
+		return false, nil
+	}
+
+	if run.Status == syncStatusFailed || run.RenditionsFailed > 0 {
+		return true, nil
+	}
+	if !run.GenerationID.Valid {
+		return false, nil
+	}
+
+	var failed int64
+	if err := a.read.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM generation_items WHERE generation_id = ? AND status = 'failed'`,
+		run.GenerationID.Int64,
+	).Scan(&failed); err != nil {
+		return false, err
+	}
+	return failed > 0, nil
+}
+
+// handleSyncRetry melayani POST /sync/{id}/retry.
+//
+// Tanpa field item: ulangi semua pilihan run yang belum ada di batch selesai.
+// Dengan item=<generation_items.id>: ulangi satu series saja. Retry selalu
+// membuat run + generation baru; run lama tetap sebagai riwayat.
+func (a *Admin) handleSyncRetry(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, ok := pathID(r, "id")
+	if !ok {
+		a.renderError(w, r, http.StatusNotFound, "Sinkronisasi tidak ditemukan.")
+		return
+	}
+
+	run, err := a.syncRunByID(ctx, id)
+	if err != nil {
+		a.internalError(w, r, err, "Gagal membaca sinkronisasi.")
+		return
+	}
+	if run == nil {
+		a.renderError(w, r, http.StatusNotFound, "Sinkronisasi tidak ditemukan.")
+		return
+	}
+	if !run.terminal() {
+		a.flashTo(r, "error", fmt.Sprintf("Sinkronisasi #%d masih berjalan.", id))
+		http.Redirect(w, r, fmt.Sprintf("/sync/%d", id), http.StatusSeeOther)
+		return
+	}
+	if a.ingest == nil {
+		a.flashTo(r, "error", "Pemilihan konten tidak tersedia pada server ini.")
+		http.Redirect(w, r, fmt.Sprintf("/sync/%d", id), http.StatusSeeOther)
+		return
+	}
+
+	var raw string
+	if err := a.read.QueryRowContext(ctx,
+		`SELECT COALESCE(selection_json, '') FROM sync_runs WHERE id = ?`, id,
+	).Scan(&raw); err != nil {
+		a.internalError(w, r, err, "Gagal membaca pilihan konten run.")
+		return
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		a.flashTo(r, "error", "Run ini tidak menyimpan pilihan konten; pilih ulang dari List Content.")
+		http.Redirect(w, r, fmt.Sprintf("/sync/%d", id), http.StatusSeeOther)
+		return
+	}
+
+	var selections []catalog.Series
+	if err := json.Unmarshal([]byte(raw), &selections); err != nil || len(selections) == 0 {
+		a.flashTo(r, "error", "Pilihan konten run ini tidak dapat dibaca; pilih ulang dari List Content.")
+		http.Redirect(w, r, fmt.Sprintf("/sync/%d", id), http.StatusSeeOther)
+		return
+	}
+
+	retry := selections
+	if itemRaw := strings.TrimSpace(r.PostFormValue("item")); itemRaw != "" {
+		itemID, err := strconv.ParseInt(itemRaw, 10, 64)
+		if err != nil || itemID < 1 {
+			a.flashTo(r, "error", "Konten yang ingin di-retry tidak valid.")
+			http.Redirect(w, r, fmt.Sprintf("/sync/%d", id), http.StatusSeeOther)
+			return
+		}
+		if !run.GenerationID.Valid {
+			a.renderError(w, r, http.StatusNotFound, "Konten tidak ditemukan pada run ini.")
+			return
+		}
+
+		var (
+			provider string
+			category string
+			external string
+		)
+		err = a.read.QueryRowContext(ctx, `
+SELECT pr.code, gi.category, gi.series_external_id
+  FROM generation_items gi
+  JOIN providers pr ON pr.id = gi.provider_id
+ WHERE gi.id = ? AND gi.generation_id = ?`,
+			itemID, run.GenerationID.Int64,
+		).Scan(&provider, &category, &external)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			a.renderError(w, r, http.StatusNotFound, "Konten tidak ditemukan pada run ini.")
+			return
+		case err != nil:
+			a.internalError(w, r, err, "Gagal membaca konten run.")
+			return
+		}
+
+		found := false
+		for _, series := range selections {
+			seriesProvider := strings.TrimSpace(series.Provider)
+			if seriesProvider == "" {
+				seriesProvider = defaultProvider(series.Category)
+			}
+			if strings.EqualFold(seriesProvider, provider) &&
+				strings.EqualFold(normalizeCategory(series.Category), normalizeCategory(category)) &&
+				selectionExternalID(series) == external {
+				retry = []catalog.Series{series}
+				found = true
+				break
+			}
+		}
+		if !found {
+			a.flashTo(r, "error", "Pilihan asli konten ini tidak ditemukan; pilih ulang dari List Content.")
+			http.Redirect(w, r, fmt.Sprintf("/sync/%d", id), http.StatusSeeOther)
+			return
+		}
+	}
+
+	missing, err := a.filterMissingSelections(ctx, retry)
+	if err != nil {
+		a.internalError(w, r, err, "Gagal memeriksa konten yang belum ada di batch.")
+		return
+	}
+	if len(missing) == 0 {
+		a.flashTo(r, "success", "Semua konten sudah ada di batch; tidak ada yang perlu diunduh ulang.")
+		http.Redirect(w, r, fmt.Sprintf("/sync/%d", id), http.StatusSeeOther)
+		return
+	}
+
+	runID, err := a.ingest.Start(ctx, missing)
+	if err != nil {
+		switch {
+		case alreadyRunning(err):
+			a.flashTo(r, "error", "Masih ada sinkronisasi yang berjalan; tunggu hingga selesai.")
+		case errors.Is(err, ingest.ErrInsufficientStorage):
+			a.flashTo(r, "error", "Ruang penyimpanan tidak mencukupi; hapus konten lama terlebih dahulu.")
+		case errors.Is(err, ingest.ErrNoSelections), errors.Is(err, ingest.ErrMixedProviders):
+			a.flashTo(r, "error", "Pilihan retry tidak valid; pilih ulang dari List Content.")
+		default:
+			a.internalError(w, r, err, "Gagal mengantrekan retry.")
+			return
+		}
+		http.Redirect(w, r, fmt.Sprintf("/sync/%d", id), http.StatusSeeOther)
+		return
+	}
+
+	a.flashTo(r, "success", fmt.Sprintf("%d konten dicoba ulang (run #%d).", len(missing), runID))
+	http.Redirect(w, r, fmt.Sprintf("/sync/%d", runID), http.StatusSeeOther)
 }

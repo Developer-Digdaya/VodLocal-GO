@@ -22,6 +22,7 @@
           <th scope="col">Progres</th>
           <th scope="col">Langkah</th>
           <th scope="col">Error</th>
+          <th scope="col">Aksi</th>
         </tr>
       </thead>
       <tbody>
@@ -50,6 +51,16 @@
             {{if .CurrentEpisode}}<span class="muted">· {{.CurrentEpisode}}</span>{{end}}
           </td>
           <td class="small">{{if .ErrorMessage}}{{.ErrorMessage}}{{else}}—{{end}}</td>
+          <td>
+            {{if and $.CanRetry (eq .Status "failed")}}
+            <form class="inline" method="post" action="/sync/{{$.RunID}}/retry"
+                  onsubmit="return confirm('Coba lagi konten ini?');">
+              <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="item" value="{{.ID}}">
+              <button class="secondary" type="submit">Coba lagi</button>
+            </form>
+            {{else}}—{{end}}
+          </td>
         </tr>
       {{end}}
       </tbody>

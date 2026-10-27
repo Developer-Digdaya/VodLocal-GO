@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -1412,5 +1413,84 @@ func TestStartToleratesDiskUsageError(t *testing.T) {
 	}
 	if got := waitRun(t, env.store, runID); got != "completed" {
 		t.Fatalf("sync_runs.status = %q, mau completed", got)
+	}
+}
+
+// TestStartPersistsSelection memastikan pilihan konten disimpan di sync_runs
+// agar run yang gagal bisa di-retry tanpa memilih ulang.
+func TestStartPersistsSelection(t *testing.T) {
+	srv := newHLSServer(t)
+	src := &fakeSource{code: "dramahits", pages: episodePages(srv.URL)}
+	env := newEnv(t, src, srv.Client())
+
+	sels := selection(srv.URL + "/art/poster.jpg")
+	runID, err := env.svc.Start(context.Background(), sels)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if got := waitRun(t, env.store, runID); got != "completed" {
+		t.Fatalf("sync_runs.status = %q, mau completed", got)
+	}
+
+	raw := queryString(t, env.store.Read(),
+		`SELECT COALESCE(selection_json, '') FROM sync_runs WHERE id = ?`, runID)
+	var got []catalog.Series
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatalf("selection_json bukan JSON valid: %v (raw=%s)", err, raw)
+	}
+	if len(got) != 1 || got[0].Slug != testSeriesSlug {
+		t.Fatalf("selection_json = %+v, mau satu series slug %q", got, testSeriesSlug)
+	}
+}
+
+// failOneSource menggagalkan ListEpisodes untuk satu slug, untuk menguji
+// kegagalan tingkat series tanpa menggagalkan series lain.
+type failOneSource struct {
+	fakeSource
+	failSlug string
+}
+
+func (f *failOneSource) ListEpisodes(ctx context.Context, seriesSlug string, page int) (catalog.EpisodePage, error) {
+	if seriesSlug == f.failSlug {
+		return catalog.EpisodePage{}, errors.New("boom")
+	}
+	return f.fakeSource.ListEpisodes(ctx, seriesSlug, page)
+}
+
+// TestIngestPartialCommitWhenOneSeriesFails memastikan error tingkat series
+// tidak membatalkan series lain: generation tetap di-commit dan hanya series
+// yang gagal ditandai failed.
+func TestIngestPartialCommitWhenOneSeriesFails(t *testing.T) {
+	srv := newHLSServer(t)
+	src := &failOneSource{
+		fakeSource: fakeSource{code: "dramahits", pages: episodePages(srv.URL)},
+		failSlug:   "fail-series",
+	}
+	env := newEnv(t, src, srv.Client())
+
+	good := selection(srv.URL + "/art/poster.jpg")[0]
+	bad := good
+	bad.ID = "fail-id"
+	bad.Slug = "fail-series"
+	bad.Title = "Series Gagal"
+
+	runID, err := env.svc.Start(context.Background(), []catalog.Series{bad, good})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if got := waitRun(t, env.store, runID); got != "completed" {
+		t.Fatalf("sync_runs.status = %q, mau completed (partial commit)", got)
+	}
+	if got := queryInt(t, env.store.Read(),
+		`SELECT renditions_ready FROM sync_runs WHERE id = ?`, runID); got == 0 {
+		t.Errorf("renditions_ready = 0, mau > 0 dari series yang berhasil")
+	}
+	if got := queryString(t, env.store.Read(),
+		`SELECT status FROM generation_items WHERE series_external_id = 'fail-series'`); got != "failed" {
+		t.Errorf("status series gagal = %q, mau failed", got)
+	}
+	if got := queryString(t, env.store.Read(),
+		`SELECT status FROM generation_items WHERE series_external_id = ?`, testSeriesSlug); got != "done" {
+		t.Errorf("status series berhasil = %q, mau done", got)
 	}
 }

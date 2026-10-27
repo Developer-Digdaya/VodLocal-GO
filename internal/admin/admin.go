@@ -240,6 +240,7 @@ func (a *Admin) Mount(r chi.Router) {
 		pr.Get("/sync/{id}/status", a.handleSyncStatus)
 		pr.Get("/sync/{id}/items", a.handleSyncItems)
 		pr.With(csrf).Post("/sync/{id}/cancel", a.handleSyncCancel)
+		pr.With(csrf).Post("/sync/{id}/retry", a.handleSyncRetry)
 
 		// "Remove all batch" tidak bergantung pada provider, jadi route-nya
 		// selalu dipasang walaupun Lister/Ingest tidak tersedia.

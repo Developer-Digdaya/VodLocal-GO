@@ -639,3 +639,150 @@ func TestPagesSmoke(t *testing.T) {
 		t.Fatalf("GET /logs: status = %d, mau 404", rec.Code)
 	}
 }
+
+// retrySelectionJSON adalah pilihan dua series: ext-1 sudah punya rendition
+// ready di generation 42 (harus difilter), ext-2 hanya punya rendition failed.
+const retrySelectionJSON = `[
+  {"provider":"dens_tv","category":"series","id":"ext-1","slug":"ext-1","title":"Cinta Pertama"},
+  {"provider":"dens_tv","category":"movie","id":"ext-2","slug":"ext-2","title":"Film Lama"}
+]`
+
+// seedRetryRun menyisipkan satu run terminal pada generation 42.
+func seedRetryRun(f *fixture, id int64, status string, selectionJSON any) {
+	f.t.Helper()
+	f.exec(`INSERT INTO sync_runs (id, generation_id, trigger_source, scope, status, phase,
+	                               total_renditions, renditions_ready, renditions_failed,
+	                               created_at, selection_json)
+	        VALUES (?, 42, 'manual', 'selection', ?, 'failed', 1, 0, 1,
+	                '2026-10-20T11:00:00Z', ?)`, id, status, selectionJSON)
+}
+
+// TestSyncRetryBatch memastikan retry batch hanya mengirim konten yang belum
+// ada di batch selesai.
+func TestSyncRetryBatch(t *testing.T) {
+	f := newFixture(t)
+	f.login()
+	seedRetryRun(f, 10, "failed", retrySelectionJSON)
+	f.exec(`INSERT INTO generation_items (id, generation_id, provider_id, category,
+	                                      series_external_id, series_title, status)
+	        VALUES (500, 42, 1, 'movie', 'ext-2', 'Film Lama', 'failed')`)
+
+	rec := f.post("/sync/10/retry", nil)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, mau 303 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); loc != "/sync/77" {
+		t.Fatalf("Location = %q, mau /sync/77", loc)
+	}
+
+	calls := f.ingest.calls()
+	if len(calls) != 1 || len(calls[0]) != 1 || calls[0][0].Slug != "ext-2" {
+		t.Fatalf("pilihan retry = %+v, mau hanya ext-2", calls)
+	}
+}
+
+// TestSyncRetryItem memastikan retry per konten hanya mengirim satu series dan
+// menolak item milik run lain / yang sudah ada di batch.
+func TestSyncRetryItem(t *testing.T) {
+	f := newFixture(t)
+	f.login()
+	seedRetryRun(f, 10, "failed", retrySelectionJSON)
+	f.exec(`INSERT INTO generation_items (id, generation_id, provider_id, category,
+	                                      series_external_id, series_title, status)
+	        VALUES (500, 42, 1, 'movie', 'ext-2', 'Film Lama', 'failed')`)
+	f.exec(`INSERT INTO generation_items (id, generation_id, provider_id, category,
+	                                      series_external_id, series_title, status)
+	        VALUES (501, 42, 1, 'series', 'ext-1', 'Cinta Pertama', 'failed')`)
+
+	rec := f.post("/sync/10/retry", url.Values{"item": {"500"}})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("item 500: status = %d, mau 303 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); loc != "/sync/77" {
+		t.Fatalf("item 500: Location = %q, mau /sync/77", loc)
+	}
+	calls := f.ingest.calls()
+	if len(calls) != 1 || len(calls[0]) != 1 || calls[0][0].Slug != "ext-2" {
+		t.Fatalf("pilihan retry item = %+v, mau hanya ext-2", calls)
+	}
+
+	// ext-1 sudah punya rendition ready → tidak diunduh ulang.
+	rec = f.post("/sync/10/retry", url.Values{"item": {"501"}})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("item 501: status = %d, mau 303", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/sync/10" {
+		t.Fatalf("item 501: Location = %q, mau /sync/10", loc)
+	}
+	if got := len(f.ingest.calls()); got != 1 {
+		t.Fatalf("ingest dipanggil %d kali, mau tetap 1", got)
+	}
+
+	// Item yang bukan milik generation run → 404.
+	rec = f.post("/sync/10/retry", url.Values{"item": {"999"}})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("item 999: status = %d, mau 404", rec.Code)
+	}
+}
+
+// TestSyncRetryRejectsMissingSelectionOrActiveRun memastikan retry tidak jalan
+// untuk run aktif atau run lama tanpa selection_json.
+func TestSyncRetryRejectsMissingSelectionOrActiveRun(t *testing.T) {
+	f := newFixture(t)
+	f.login()
+
+	seedRetryRun(f, 10, "failed", nil)
+	rec := f.post("/sync/10/retry", nil)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("run tanpa pilihan: status = %d, mau 303", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/sync/10" {
+		t.Fatalf("run tanpa pilihan: Location = %q, mau /sync/10", loc)
+	}
+
+	f.exec(`INSERT INTO sync_runs (id, generation_id, trigger_source, scope, status, phase,
+	                               created_at, selection_json)
+	        VALUES (11, 42, 'manual', 'selection', 'running', 'segments',
+	                '2026-10-20T11:00:00Z', ?)`, retrySelectionJSON)
+	rec = f.post("/sync/11/retry", nil)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("run aktif: status = %d, mau 303", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/sync/11" {
+		t.Fatalf("run aktif: Location = %q, mau /sync/11", loc)
+	}
+	if got := len(f.ingest.calls()); got != 0 {
+		t.Fatalf("ingest dipanggil %d kali, mau 0", got)
+	}
+}
+
+// TestSyncDetailRetryButtons memastikan tombol batch dan tombol per konten
+// hanya tampil pada run yang bisa di-retry.
+func TestSyncDetailRetryButtons(t *testing.T) {
+	f := newFixture(t)
+	f.login()
+	seedRetryRun(f, 10, "failed", retrySelectionJSON)
+	f.exec(`INSERT INTO generation_items (id, generation_id, provider_id, category,
+	                                      series_external_id, series_title, status)
+	        VALUES (500, 42, 1, 'movie', 'ext-2', 'Film Lama', 'failed')`)
+
+	page := f.get("/sync/10")
+	if page.Code != http.StatusOK {
+		t.Fatalf("GET /sync/10: status = %d (body=%s)", page.Code, page.Body.String())
+	}
+	body := page.Body.String()
+	for _, want := range []string{
+		"Coba lagi semua konten yang gagal",
+		`name="item" value="500"`,
+		"/sync/10/retry",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("halaman run gagal tidak memuat %q", want)
+		}
+	}
+
+	completed := f.get("/sync/1")
+	if strings.Contains(completed.Body.String(), "/sync/1/retry") {
+		t.Fatalf("run completed tanpa pilihan masih menampilkan tombol retry")
+	}
+}

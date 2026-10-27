@@ -55,6 +55,7 @@ package ingest
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -279,6 +280,13 @@ func (s *Service) Start(ctx context.Context, selections []catalog.Series) (int64
 		return 0, err
 	}
 
+	// Pilihan disimpan apa adanya agar run yang gagal bisa di-retry tanpa
+	// memilih ulang dari modal List Content.
+	selectionJSON, err := json.Marshal(selections)
+	if err != nil {
+		return 0, fmt.Errorf("ingest: simpan pilihan: %w", err)
+	}
+
 	s.startMu.Lock()
 	defer s.startMu.Unlock()
 
@@ -312,7 +320,7 @@ func (s *Service) Start(ctx context.Context, selections []catalog.Series) (int64
 	}
 
 	// Langkah 5: baris sync_runs 'running'.
-	runID, err := s.insertRun(ctx, genID)
+	runID, err := s.insertRun(ctx, genID, string(selectionJSON))
 	if err != nil {
 		if abortErr := build.Abort(); abortErr != nil {
 			s.log.Warn("gagal membuang staging", "generation", label, "error", abortErr)
@@ -488,7 +496,15 @@ func (s *Service) execute(ctx context.Context, st *runState) error {
 		}
 		code := normalizeProvider(series.Provider)
 		if err := s.processSeries(ctx, st, provIDs[code], series); err != nil {
-			return s.fail(ctx, st, err)
+			if cerr := ctx.Err(); cerr != nil {
+				return s.fail(ctx, st, cerr)
+			}
+			// Kegagalan tingkat series tidak membatalkan series lain. proses
+			// processSeries sudah menandai generation_items series ini 'failed'
+			// lewat defer; run lanjut dan tetap bisa commit parsial.
+			s.log.Warn("series gagal, dilanjutkan",
+				"run_id", st.runID, "series", seriesExternalID(series), "error", err)
+			continue
 		}
 	}
 
@@ -1404,7 +1420,7 @@ VALUES (?, ?, ?, 'building', ?)`,
 }
 
 // insertRun menyisipkan baris sync_runs 'running' untuk satu generation.
-func (s *Service) insertRun(ctx context.Context, genID int64) (int64, error) {
+func (s *Service) insertRun(ctx context.Context, genID int64, selectionJSON string) (int64, error) {
 	ctx, cancel := s.sqlCtx(ctx)
 	defer cancel()
 
@@ -1412,9 +1428,9 @@ func (s *Service) insertRun(ctx context.Context, genID int64) (int64, error) {
 	var id int64
 	err := s.store.Write().QueryRowContext(ctx, `
 INSERT INTO sync_runs (generation_id, trigger_source, scope, status, phase, triggered_by,
-                       total_providers, started_at, created_at)
-VALUES (?, ?, ?, 'running', 'discovery', ?, 1, ?, ?) RETURNING id`,
-		genID, runTrigger, runScope, runTrigger, now, now).Scan(&id)
+                       total_providers, started_at, created_at, selection_json)
+VALUES (?, ?, ?, 'running', 'discovery', ?, 1, ?, ?, ?) RETURNING id`,
+		genID, runTrigger, runScope, runTrigger, now, now, selectionJSON).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("ingest: catat sync run: %w", err)
 	}

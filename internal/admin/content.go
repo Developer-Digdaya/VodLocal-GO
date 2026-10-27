@@ -302,6 +302,129 @@ func (a *Admin) existingSlugs(ctx context.Context, provider string, slugs []stri
 	return found, nil
 }
 
+// alreadyReadyQuery mengembalikan external_id yang sudah punya rendition
+// `ready` pada batch selesai. Dipakai filter retry: konten yang rendition-nya
+// gagal atau masih building tidak dianggap sudah ada.
+const alreadyReadyQuery = `
+SELECT t.external_id
+FROM titles t
+JOIN playables p ON p.title_id = t.id
+JOIN renditions r ON r.playable_id = p.id
+JOIN generations g ON g.id = r.generation_id
+JOIN providers pr ON pr.id = t.provider_id
+WHERE pr.code = ? AND t.external_id IN (%s)
+  AND r.status = 'ready'
+  AND g.status NOT IN ('building','failed')
+GROUP BY t.external_id`
+
+// existingReadySlugs mengembalikan external_id milik provider yang sudah punya
+// rendition ready di batch selesai.
+func (a *Admin) existingReadySlugs(ctx context.Context, provider string, slugs []string) (map[string]struct{}, error) {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider == "" || len(slugs) == 0 {
+		return map[string]struct{}{}, nil
+	}
+
+	query := fmt.Sprintf(alreadyReadyQuery, slugPlaceholders(len(slugs)))
+	args := make([]any, 0, len(slugs)+1)
+	args = append(args, provider)
+	for _, slug := range slugs {
+		args = append(args, slug)
+	}
+
+	rows, err := a.read.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	found := make(map[string]struct{}, len(slugs))
+	for rows.Next() {
+		var externalID string
+		if err := rows.Scan(&externalID); err != nil {
+			return nil, err
+		}
+		found[strings.ToLower(externalID)] = struct{}{}
+	}
+	return found, rows.Err()
+}
+
+// selectionExternalID adalah identitas yang dipakai titles.external_id oleh
+// ingest: slug lebih dulu, lalu ID provider.
+func selectionExternalID(series catalog.Series) string {
+	if slug := strings.TrimSpace(series.Slug); slug != "" {
+		return slug
+	}
+	return strings.TrimSpace(series.ID)
+}
+
+// filterMissingSelections membuang pilihan yang sudah punya rendition ready di
+// batch selesai. Pilihan yang belum ada di batch dikembalikan apa adanya untuk
+// di-retry.
+func (a *Admin) filterMissingSelections(ctx context.Context, selections []catalog.Series) ([]catalog.Series, error) {
+	if len(selections) == 0 {
+		return nil, nil
+	}
+
+	grouped := make(map[string][]string)
+	order := make([]string, 0, 1)
+	seen := make(map[string]map[string]struct{})
+	for _, series := range selections {
+		provider := strings.ToLower(strings.TrimSpace(series.Provider))
+		if provider == "" {
+			provider = defaultProvider(series.Category)
+		}
+		external := selectionExternalID(series)
+		if provider == "" || external == "" {
+			continue
+		}
+		if _, ok := seen[provider]; !ok {
+			seen[provider] = make(map[string]struct{})
+			order = append(order, provider)
+		}
+		key := strings.ToLower(external)
+		if _, duplicate := seen[provider][key]; duplicate {
+			continue
+		}
+		seen[provider][key] = struct{}{}
+		grouped[provider] = append(grouped[provider], external)
+	}
+
+	ready := make(map[string]struct{}, len(selections))
+	for _, provider := range order {
+		found, err := a.existingReadySlugs(ctx, provider, grouped[provider])
+		if err != nil {
+			return nil, err
+		}
+		for external := range found {
+			ready[provider+"\x00"+external] = struct{}{}
+		}
+	}
+
+	missing := make([]catalog.Series, 0, len(selections))
+	seenMissing := make(map[string]struct{}, len(selections))
+	for _, series := range selections {
+		provider := strings.ToLower(strings.TrimSpace(series.Provider))
+		if provider == "" {
+			provider = defaultProvider(series.Category)
+		}
+		external := selectionExternalID(series)
+		if external == "" {
+			continue
+		}
+		key := provider + "\x00" + strings.ToLower(external)
+		if _, ok := ready[key]; ok {
+			continue
+		}
+		if _, duplicate := seenMissing[key]; duplicate {
+			continue
+		}
+		seenMissing[key] = struct{}{}
+		missing = append(missing, series)
+	}
+	return missing, nil
+}
+
 // markAlreadyAdded mengisi contentItem.AlreadyAdded untuk satu halaman.
 //
 // Slug dikumpulkan per provider code, jadi halaman yang seluruhnya berasal dari

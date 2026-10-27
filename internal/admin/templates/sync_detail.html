@@ -11,6 +11,15 @@
 </form>
 {{end}}
 
+{{if .CanRetry}}
+<form class="sync-actions" method="post" action="/sync/{{.Run.ID}}/retry"
+      onsubmit="return confirm('Coba lagi semua konten yang belum ada di batch? Run baru akan dibuat.');">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+  <button type="submit">Coba lagi semua konten yang gagal</button>
+</form>
+<p class="muted small">Hanya konten yang belum ada di batch selesai yang diunduh ulang.</p>
+{{end}}
+
 <div class="table-wrap">
   <table class="detail-table">
     <tr><th scope="row">Status</th><td>{{.Run.Status}}</td></tr>

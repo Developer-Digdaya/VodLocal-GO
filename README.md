@@ -252,7 +252,7 @@ Akun admin dibuat otomatis saat boot **hanya jika** `VODLOCAL_ADMIN_USER` dan
 | --- | --- |
 | `/` | Ringkasan generation, katalog, storage, device online, sync terakhir |
 | `/sync` | Riwayat run, tombol **List Content**, tabel progres per series |
-| `/sync/{id}` | Detail run + progres konten (episode, rendition, persen, error) |
+| `/sync/{id}` | Detail run + progres konten (episode, rendition, persen, error, retry) |
 | `/devices` | Daftar tablet, nonaktifkan/aktifkan, hapus perangkat |
 | `/storage` | Daftar konten per series, hapus per konten, hapus semua konten |
 | `/settings` | Batas varian (default 720p), ambang storage, paralelisme sync |
@@ -264,6 +264,13 @@ berpindah halaman/tab. Konten yang sudah ada ditandai **Sudah ada** dan tidak bi
 dipilih. Tombol **Simpan pilihan** mengirim daftar `{provider, category, slug}`
 terpilih dan membuat run ingest baru; tombol **Remove all batch** menghapus seluruh
 storage dan katalog terlebih dahulu.
+
+**Retry konten gagal.** Run yang gagal/parsial menampilkan tombol **Coba lagi semua
+konten yang gagal** di `/sync/{id}`, dan tombol **Coba lagi** di setiap baris konten yang
+gagal. Retry hanya mengunduh konten yang belum punya rendition `ready` di batch selesai;
+setiap retry membuat run + generation baru. Pilihan konten disimpan per run
+(`sync_runs.selection_json`), jadi tidak perlu memilih ulang dari List Content. Satu
+series yang gagal tidak membatalkan series lain selama ada minimal satu rendition siap.
 
 **Waktu.** Semua timestamp di panel ditampilkan dalam **WIB (UTC+7)**. Database tetap
 menyimpan UTC.
