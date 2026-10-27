@@ -276,7 +276,6 @@ type seriesItem struct {
 	PublishedAt    string        `json:"published_at"`
 	Media          media         `json:"media"`
 	Details        seriesDetails `json:"details"`
-	Genres         []string      `json:"genres"`
 }
 
 // seriesDetails memuat angka-angka ringkas sebuah series. release_year
@@ -360,7 +359,6 @@ func (it seriesItem) series() catalog.Series {
 		Year:         parseYear(it.Details.ReleaseYear),
 		EpisodeCount: it.Details.TotalEpisodes,
 		AgeRating:    ageRating,
-		Genres:       copyStrings(it.Genres),
 		PublishedAt:  it.PublishedAt,
 	}
 }
@@ -393,14 +391,6 @@ func (it episodeItem) episode() catalog.Episode {
 		episode.PreviewURL = preview[0].URL
 	}
 	return episode
-}
-
-// copyStrings mengembalikan salinan values, atau slice kosong yang non-nil
-// bila tidak ada nilai, supaya pemanggil tidak menerima slice nil yang
-// membingungkan saat di-encode ke JSON.
-func copyStrings(values []string) []string {
-	out := make([]string, 0, len(values))
-	return append(out, values...)
 }
 
 // parseYear membaca details.release_year yang bisa berupa string ("2025"),

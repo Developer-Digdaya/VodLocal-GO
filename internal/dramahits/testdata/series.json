@@ -21,8 +21,7 @@
         "total_seasons": 1,
         "total_episodes": 80,
         "release_year": "2025"
-      },
-      "genres": ["Drama", "Romansa"]
+      }
     },
     {
       "id": "3b7e5d12-8c4a-4f60-b1d2-6e9f0a2b3c4d",
@@ -45,8 +44,7 @@
         "total_seasons": 2,
         "total_episodes": 24,
         "release_year": 2024
-      },
-      "genres": ["Komedi"]
+      }
     }
   ],
   "links": {

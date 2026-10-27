@@ -299,11 +299,6 @@ func (s *Service) persistImport(ctx context.Context, genID int64, m *Manifest, s
 		if err != nil {
 			return fmt.Errorf("transfer: simpan judul %s: %w", item.Title.ExternalID, err)
 		}
-		for _, genre := range item.Title.Genres {
-			if err := upsertGenreTx(ctx, tx, titleID, genre); err != nil {
-				return err
-			}
-		}
 
 		episodeByExternal := make(map[string]int64, len(item.Episodes))
 		for _, ep := range item.Episodes {
@@ -424,23 +419,6 @@ RETURNING id`,
 		nullString(t.PosterPath), nullString(t.BackdropPath), nullInt(t.DurationSeconds),
 		now, now, now).Scan(&id)
 	return id, err
-}
-
-func upsertGenreTx(ctx context.Context, tx *sql.Tx, titleID int64, genre Genre) error {
-	name := strings.TrimSpace(genre.Name)
-	slug := strings.TrimSpace(genre.Slug)
-	if name == "" || slug == "" {
-		return nil
-	}
-	var id int64
-	if err := tx.QueryRowContext(ctx, `
-INSERT INTO genres (name, slug) VALUES (?, ?)
-ON CONFLICT(slug) DO UPDATE SET name = excluded.name
-RETURNING id`, name, slug).Scan(&id); err != nil {
-		return err
-	}
-	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO title_genres (title_id, genre_id) VALUES (?, ?)`, titleID, id)
-	return err
 }
 
 func upsertEpisodeTx(ctx context.Context, tx *sql.Tx, titleID int64, ep Episode, now string) (int64, error) {

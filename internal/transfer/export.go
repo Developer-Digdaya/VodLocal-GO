@@ -245,12 +245,6 @@ SELECT gi.id, gi.generation_id, g.label, pr.code, gi.category, gi.series_externa
 				PosterPath: r.poster, BackdropPath: r.backdrop,
 			},
 		}
-		genres, err := s.loadGenres(ctx, r.titleID)
-		if err != nil {
-			return nil, err
-		}
-		item.Title.Genres = genres
-
 		episodes, episodeByID, err := s.loadEpisodes(ctx, r.titleID)
 		if err != nil {
 			return nil, err
@@ -363,26 +357,6 @@ SELECT gi.id, gi.generation_id, g.label, pr.code, gi.category, gi.series_externa
 		_ = i
 	}
 	return plan, nil
-}
-
-func (s *Service) loadGenres(ctx context.Context, titleID int64) ([]Genre, error) {
-	rows, err := s.store.Read().QueryContext(ctx, `
-SELECT g.name, g.slug
-  FROM title_genres tg JOIN genres g ON g.id = tg.genre_id
- WHERE tg.title_id = ? ORDER BY g.name`, titleID)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	var out []Genre
-	for rows.Next() {
-		var g Genre
-		if err := rows.Scan(&g.Name, &g.Slug); err != nil {
-			return nil, err
-		}
-		out = append(out, g)
-	}
-	return out, rows.Err()
 }
 
 func (s *Service) loadEpisodes(ctx context.Context, titleID int64) ([]Episode, map[int64]string, error) {

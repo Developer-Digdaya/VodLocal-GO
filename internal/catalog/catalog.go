@@ -28,19 +28,18 @@ var ErrUnknownCategory = errors.New("catalog: kategori tidak dikenal")
 // Series adalah satu judul yang bisa dipilih dari daftar konten. StreamURL
 // hanya diisi untuk movie; series mengambil URL dari endpoint episode.
 type Series struct {
-	Provider     string   `json:"provider"`
-	Category     string   `json:"category"`
-	ID           string   `json:"id"`
-	Slug         string   `json:"slug"`
-	Title        string   `json:"title"`
-	Description  string   `json:"description"`
-	PosterURL    string   `json:"poster_url"`
-	StreamURL    string   `json:"stream_url,omitempty"`
-	Year         int      `json:"year"`
-	EpisodeCount int      `json:"episode_count"`
-	AgeRating    string   `json:"age_rating"`
-	Genres       []string `json:"genres"`
-	PublishedAt  string   `json:"published_at"`
+	Provider     string `json:"provider"`
+	Category     string `json:"category"`
+	ID           string `json:"id"`
+	Slug         string `json:"slug"`
+	Title        string `json:"title"`
+	Description  string `json:"description"`
+	PosterURL    string `json:"poster_url"`
+	StreamURL    string `json:"stream_url,omitempty"`
+	Year         int    `json:"year"`
+	EpisodeCount int    `json:"episode_count"`
+	AgeRating    string `json:"age_rating"`
+	PublishedAt  string `json:"published_at"`
 }
 
 // SeriesPage adalah satu halaman daftar series.

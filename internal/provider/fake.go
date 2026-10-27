@@ -147,11 +147,6 @@ func cloneTitles(in []Title) []Title {
 	}
 	out := make([]Title, len(in))
 	copy(out, in)
-	for i := range out {
-		if in[i].Genres != nil {
-			out[i].Genres = append([]string(nil), in[i].Genres...)
-		}
-	}
 	return out
 }
 

@@ -53,20 +53,6 @@ CREATE INDEX idx_titles_kind       ON titles(kind, is_published);
 CREATE INDEX idx_titles_slug       ON titles(slug);
 CREATE INDEX idx_titles_updated    ON titles(updated_at DESC);
 
-CREATE TABLE genres (
-    id   INTEGER PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
-    slug TEXT NOT NULL UNIQUE
-);
-
-CREATE TABLE title_genres (
-    title_id INTEGER NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
-    genre_id INTEGER NOT NULL REFERENCES genres(id) ON DELETE CASCADE,
-    PRIMARY KEY (title_id, genre_id)
-);
-
-CREATE INDEX idx_title_genres_genre ON title_genres(genre_id);
-
 CREATE TABLE episodes (
     id               INTEGER PRIMARY KEY,
     title_id         INTEGER NOT NULL REFERENCES titles(id) ON DELETE CASCADE,

@@ -55,25 +55,18 @@ type Item struct {
 
 // TitleData is the portable form of a titles row.
 type TitleData struct {
-	ExternalID      string  `json:"external_id"`
-	Kind            string  `json:"kind"`
-	Name            string  `json:"title"`
-	Slug            string  `json:"slug"`
-	Synopsis        string  `json:"synopsis,omitempty"`
-	ReleaseYear     int     `json:"release_year,omitempty"`
-	ContentRating   string  `json:"content_rating,omitempty"`
-	Language        string  `json:"language,omitempty"`
-	Country         string  `json:"country,omitempty"`
-	DurationSeconds int     `json:"duration_seconds,omitempty"`
-	PosterPath      string  `json:"poster_path,omitempty"`
-	BackdropPath    string  `json:"backdrop_path,omitempty"`
-	Genres          []Genre `json:"genres,omitempty"`
-}
-
-// Genre is a portable genre name/slug pair.
-type Genre struct {
-	Name string `json:"name"`
-	Slug string `json:"slug"`
+	ExternalID      string `json:"external_id"`
+	Kind            string `json:"kind"`
+	Name            string `json:"title"`
+	Slug            string `json:"slug"`
+	Synopsis        string `json:"synopsis,omitempty"`
+	ReleaseYear     int    `json:"release_year,omitempty"`
+	ContentRating   string `json:"content_rating,omitempty"`
+	Language        string `json:"language,omitempty"`
+	Country         string `json:"country,omitempty"`
+	DurationSeconds int    `json:"duration_seconds,omitempty"`
+	PosterPath      string `json:"poster_path,omitempty"`
+	BackdropPath    string `json:"backdrop_path,omitempty"`
 }
 
 // Episode is the portable form of an episodes row.

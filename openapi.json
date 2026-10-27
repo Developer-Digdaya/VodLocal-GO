@@ -18,7 +18,7 @@
   "tags": [
     { "name": "Health", "description": "Status proses dan kesiapan server." },
     { "name": "Device", "description": "Registrasi dan identitas tablet." },
-    { "name": "Catalog", "description": "Katalog judul, episode, genre, dan pencarian." },
+    { "name": "Catalog", "description": "Katalog judul, episode, dan pencarian." },
     { "name": "Playback", "description": "Metadata playable dan master playlist HLS." },
     { "name": "Progress", "description": "Posisi tonton per perangkat." },
     { "name": "Media", "description": "Berkas media statis (playlist, segmen, subtitle, poster)." },
@@ -176,41 +176,6 @@
         }
       }
     },
-    "/api/v1/genres": {
-      "get": {
-        "tags": ["Catalog"],
-        "summary": "Daftar genre",
-        "description": "Tidak mensyaratkan generation aktif.",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          { "$ref": "#/components/parameters/Page" },
-          { "$ref": "#/components/parameters/PerPage" }
-        ],
-        "responses": {
-          "200": {
-            "description": "Daftar genre",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/GenresResponse" },
-                "example": {
-                  "code": 0,
-                  "msg": "Berhasil",
-                  "data": {
-                    "items": [
-                      { "id": 1, "name": "Drama", "slug": "drama" },
-                      { "id": 2, "name": "Romantis", "slug": "romantis" }
-                    ],
-                    "meta": { "page": 1, "per_page": 50, "total": 2, "total_pages": 1 }
-                  },
-                  "errors": []
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
-        }
-      }
-    },
     "/api/v1/titles": {
       "get": {
         "tags": ["Catalog"],
@@ -222,7 +187,6 @@
           { "$ref": "#/components/parameters/PerPage" },
           { "$ref": "#/components/parameters/Query" },
           { "$ref": "#/components/parameters/Kind" },
-          { "$ref": "#/components/parameters/Genre" },
           { "$ref": "#/components/parameters/Sort" }
         ],
         "responses": {
@@ -250,7 +214,6 @@
                         "backdrop_url": null,
                         "duration_seconds": null,
                         "episode_count": 80,
-                        "genres": ["Drama", "Romansa"],
                         "playable": true
                       }
                     ],
@@ -369,8 +332,7 @@
             "schema": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 },
             "example": 20
           },
-          { "$ref": "#/components/parameters/Kind" },
-          { "$ref": "#/components/parameters/Genre" }
+          { "$ref": "#/components/parameters/Kind" }
         ],
         "responses": {
           "200": {
@@ -389,7 +351,6 @@
                         "title": "Ketika Cinta Menjadi Benci",
                         "release_year": 2025,
                         "poster_url": "/media/gen-000042/dramahits/series/9d1c-4f5a/poster.jpg",
-                        "genres": ["Drama", "Romansa"],
                         "episode_count": 80,
                         "match": "title"
                       }
@@ -773,7 +734,6 @@
                         "year": 2025,
                         "episode_count": 80,
                         "age_rating": "Dewasa 17+",
-                        "genres": ["Drama", "Romansa"],
                         "published_at": "2026-10-20T10:46:00+07:00",
                         "already_added": false
                       }
@@ -1080,14 +1040,6 @@
         "schema": { "type": "string", "enum": ["movie", "series"] },
         "example": "series"
       },
-      "Genre": {
-        "name": "genre",
-        "in": "query",
-        "required": false,
-        "schema": { "type": "string" },
-        "description": "Slug genre.",
-        "example": "drama"
-      },
       "Sort": {
         "name": "sort",
         "in": "query",
@@ -1314,27 +1266,6 @@
           { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/DeviceData" } } }
         ]
       },
-      "Genre": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "integer", "example": 1 },
-          "name": { "type": "string", "example": "Drama" },
-          "slug": { "type": "string", "example": "drama" }
-        }
-      },
-      "GenrePage": {
-        "type": "object",
-        "properties": {
-          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Genre" } },
-          "meta": { "$ref": "#/components/schemas/Meta" }
-        }
-      },
-      "GenresResponse": {
-        "allOf": [
-          { "$ref": "#/components/schemas/SuccessEnvelope" },
-          { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/GenrePage" } } }
-        ]
-      },
       "Title": {
         "type": "object",
         "properties": {
@@ -1351,7 +1282,6 @@
           "backdrop_url": { "type": "string", "nullable": true, "example": null },
           "duration_seconds": { "type": "integer", "nullable": true, "example": null },
           "episode_count": { "type": "integer", "example": 80 },
-          "genres": { "type": "array", "items": { "type": "string" }, "example": ["Drama", "Romansa"] },
           "playable": { "type": "boolean", "example": true }
         }
       },
@@ -1616,7 +1546,6 @@
           "year": { "type": "integer", "example": 2025 },
           "episode_count": { "type": "integer", "example": 80 },
           "age_rating": { "type": "string", "example": "Dewasa 17+" },
-          "genres": { "type": "array", "items": { "type": "string" } },
           "published_at": { "type": "string" },
           "already_added": { "type": "boolean", "example": false }
         }

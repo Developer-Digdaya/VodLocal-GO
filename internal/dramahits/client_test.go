@@ -117,7 +117,6 @@ func TestListSeriesMapsFields(t *testing.T) {
 				Year:         2025,
 				EpisodeCount: 80,
 				AgeRating:    "Dewasa 17+",
-				Genres:       []string{"Drama", "Romansa"},
 				PublishedAt:  "2026-10-20T10:46:00+07:00",
 			},
 			{
@@ -133,7 +132,6 @@ func TestListSeriesMapsFields(t *testing.T) {
 				Year:         2024,
 				EpisodeCount: 24,
 				AgeRating:    "13+",
-				Genres:       []string{"Komedi"},
 				PublishedAt:  "2026-09-01T08:00:00+07:00",
 			},
 		},

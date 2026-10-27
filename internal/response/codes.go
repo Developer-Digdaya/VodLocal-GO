@@ -48,7 +48,6 @@ const (
 	CodeEpisodeNotFound     = 3001
 	CodePlayableNotFound    = 3002
 	CodePlayableNotReady    = 3003
-	CodeGenreNotFound       = 3004
 	CodeSearchQueryInvalid  = 3005
 	CodeContentNotPublished = 3006
 
@@ -123,7 +122,6 @@ var labels = map[int]string{
 	CodeEpisodeNotFound:     "Episode tidak ditemukan",
 	CodePlayableNotFound:    "Media tidak ditemukan",
 	CodePlayableNotReady:    "Media belum selesai diunduh",
-	CodeGenreNotFound:       "Genre tidak ditemukan",
 	CodeSearchQueryInvalid:  "Kata kunci pencarian tidak valid",
 	CodeContentNotPublished: "Konten tidak tersedia",
 
@@ -189,7 +187,6 @@ var httpStatus = map[int]int{
 	CodeEpisodeNotFound:     404,
 	CodePlayableNotFound:    404,
 	CodePlayableNotReady:    409,
-	CodeGenreNotFound:       404,
 	CodeSearchQueryInvalid:  422,
 	CodeContentNotPublished: 404,
 

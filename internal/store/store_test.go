@@ -48,16 +48,16 @@ func scalarInt(t *testing.T, s *Store, query string, args ...any) int {
 	return n
 }
 
-// 1. Open + Migrate berhasil dan menghasilkan 17 tabel aplikasi
-// (0001 membuat 17 tabel, 0002 menambah generation_items, 0003 menghapus
-// sync_tasks).
+// 1. Open + Migrate berhasil dan menghasilkan 15 tabel aplikasi
+// (0001 membuat 15 tabel, 0002 menambah generation_items, 0003 menghapus
+// sync_tasks, 0004 menghapus genres/title_genres).
 func TestOpenAndMigrateCreatesSchema(t *testing.T) {
 	s := newMigratedStore(t)
 
 	got := scalarInt(t, s,
 		`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`)
-	if got != 17 {
-		t.Errorf("jumlah tabel = %d, ingin 17", got)
+	if got != 15 {
+		t.Errorf("jumlah tabel = %d, ingin 15", got)
 	}
 }
 

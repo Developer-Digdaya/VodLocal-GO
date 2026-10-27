@@ -206,14 +206,13 @@ func TestHeartbeat(t *testing.T) {
 // titlesData adalah bentuk data GET /titles yang dipakai beberapa test.
 type titlesData struct {
 	Items []struct {
-		ID           int64    `json:"id"`
-		Provider     string   `json:"provider"`
-		Kind         string   `json:"kind"`
-		Title        string   `json:"title"`
-		PosterURL    *string  `json:"poster_url"`
-		EpisodeCount int64    `json:"episode_count"`
-		Genres       []string `json:"genres"`
-		Playable     bool     `json:"playable"`
+		ID           int64   `json:"id"`
+		Provider     string  `json:"provider"`
+		Kind         string  `json:"kind"`
+		Title        string  `json:"title"`
+		PosterURL    *string `json:"poster_url"`
+		EpisodeCount int64   `json:"episode_count"`
+		Playable     bool    `json:"playable"`
 	} `json:"items"`
 	Meta listMeta `json:"meta"`
 }
@@ -228,7 +227,7 @@ func (d titlesData) ids() []int64 {
 }
 
 // TestTitlesList memeriksa envelope, pagination, penyaringan konten siap, serta
-// filter kind dan genre (tugas uji #3).
+// filter kind (tugas uji #3).
 func TestTitlesList(t *testing.T) {
 	f := newFixture(t, nil)
 	token, _ := f.registerDevice("Tablet Kursi 3", "AA:BB:CC:DD:EE:03")
@@ -254,17 +253,11 @@ func TestTitlesList(t *testing.T) {
 	if data.Items[0].PosterURL == nil || *data.Items[0].PosterURL != "/media/gen-000001/dens_tv/2/poster.jpg" {
 		t.Fatalf("poster_url = %v, mau /media/gen-000001/dens_tv/2/poster.jpg", data.Items[0].PosterURL)
 	}
-	if len(data.Items[0].Genres) != 1 || data.Items[0].Genres[0] != "Romantis" {
-		t.Fatalf("genres = %v, mau [Romantis]", data.Items[0].Genres)
-	}
 	if !data.Items[0].Playable {
 		t.Fatalf("playable = false, mau true untuk judul siap")
 	}
 	if data.Items[1].EpisodeCount != 2 {
 		t.Fatalf("episode_count = %d, mau 2", data.Items[1].EpisodeCount)
-	}
-	if len(data.Items[1].Genres) != 1 || data.Items[1].Genres[0] != "Drama" {
-		t.Fatalf("genres = %v, mau [Drama]", data.Items[1].Genres)
 	}
 
 	// Filter kind.
@@ -276,28 +269,6 @@ func TestTitlesList(t *testing.T) {
 	f.decode(env, &data)
 	if len(data.Items) != 1 || data.Items[0].ID != 2 {
 		t.Fatalf("kind=movie: items = %v, mau [2]", data.ids())
-	}
-
-	// Filter genre: genre yang sama dengan judul belum siap tetap hanya
-	// mengembalikan judul siap.
-	env, rec = f.do(http.MethodGet, "/titles?genre=romantis", token, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("genre=romantis: status = %d", rec.Code)
-	}
-	data = titlesData{}
-	f.decode(env, &data)
-	if len(data.Items) != 1 || data.Items[0].ID != 2 {
-		t.Fatalf("genre=romantis: items = %v, mau [2]", data.ids())
-	}
-
-	env, rec = f.do(http.MethodGet, "/titles?genre=drama", token, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("genre=drama: status = %d", rec.Code)
-	}
-	data = titlesData{}
-	f.decode(env, &data)
-	if len(data.Items) != 1 || data.Items[0].ID != 1 {
-		t.Fatalf("genre=drama: items = %v, mau [1]", data.ids())
 	}
 
 	// Pagination halaman kedua dengan per_page=1.
@@ -361,10 +332,9 @@ func TestTitleDetail(t *testing.T) {
 	}
 
 	var data struct {
-		ID           int64    `json:"id"`
-		Title        string   `json:"title"`
-		EpisodeCount int64    `json:"episode_count"`
-		Genres       []string `json:"genres"`
+		ID           int64  `json:"id"`
+		Title        string `json:"title"`
+		EpisodeCount int64  `json:"episode_count"`
 		Seasons      []struct {
 			SeasonNumber int64 `json:"season_number"`
 			EpisodeCount int64 `json:"episode_count"`
@@ -381,9 +351,6 @@ func TestTitleDetail(t *testing.T) {
 	}
 	if data.FirstPlayableID == nil || *data.FirstPlayableID != 9001 {
 		t.Fatalf("first_playable_id = %v, mau 9001", data.FirstPlayableID)
-	}
-	if len(data.Genres) != 1 || data.Genres[0] != "Drama" {
-		t.Fatalf("genres = %+v, mau [Drama]", data.Genres)
 	}
 
 	// ID tidak ada → 404/3000.
@@ -483,13 +450,12 @@ func TestTitleEpisodes(t *testing.T) {
 // searchData adalah bentuk data GET /search.
 type searchData struct {
 	Titles []struct {
-		ID           int64    `json:"id"`
-		Kind         string   `json:"kind"`
-		Title        string   `json:"title"`
-		PosterURL    *string  `json:"poster_url"`
-		Genres       []string `json:"genres"`
-		EpisodeCount int64    `json:"episode_count"`
-		Match        string   `json:"match"`
+		ID           int64   `json:"id"`
+		Kind         string  `json:"kind"`
+		Title        string  `json:"title"`
+		PosterURL    *string `json:"poster_url"`
+		EpisodeCount int64   `json:"episode_count"`
+		Match        string  `json:"match"`
 	} `json:"titles"`
 	Episodes []struct {
 		ID            int64   `json:"id"`
@@ -557,9 +523,6 @@ func TestSearch(t *testing.T) {
 	f.decode(env, &data)
 	if len(data.Titles) != 1 || data.Titles[0].ID != 1 || data.Titles[0].Match != "title" {
 		t.Fatalf("titles = %+v, mau satu judul 1 dengan match=title", data.Titles)
-	}
-	if len(data.Titles[0].Genres) != 1 || data.Titles[0].Genres[0] != "Drama" {
-		t.Fatalf("genres = %+v, mau [Drama]", data.Titles[0].Genres)
 	}
 	// Poster hasil search juga memakai path di dalam generation aktif.
 	if data.Titles[0].PosterURL == nil || *data.Titles[0].PosterURL != "/media/gen-000001/dens_tv/1/poster.jpg" {
@@ -971,30 +934,6 @@ func TestAdminOverview(t *testing.T) {
 	}
 	if data.Sync.ID != nil || data.Sync.Status != "idle" {
 		t.Fatalf("sync = %+v, mau idle", data.Sync)
-	}
-}
-
-// TestGenres memastikan daftar genre memakai envelope dengan pagination.
-func TestGenres(t *testing.T) {
-	f := newFixture(t, nil)
-	token, _ := f.registerDevice("Tablet Kursi 13", "AA:BB:CC:DD:EE:13")
-
-	env, rec := f.do(http.MethodGet, "/genres", token, nil)
-	if rec.Code != http.StatusOK || env.Code != response.CodeSuccess {
-		t.Fatalf("status/code = %d/%d, mau 200/0 (body=%s)", rec.Code, env.Code, rec.Body.String())
-	}
-
-	var data struct {
-		Items []struct {
-			ID   int64  `json:"id"`
-			Name string `json:"name"`
-			Slug string `json:"slug"`
-		} `json:"items"`
-		Meta listMeta `json:"meta"`
-	}
-	f.decode(env, &data)
-	if len(data.Items) != 2 || data.Meta != (listMeta{Page: 1, PerPage: 50, Total: 2, TotalPages: 1}) {
-		t.Fatalf("data = %+v, mau 2 genre dengan meta standar", data)
 	}
 }
 

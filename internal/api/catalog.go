@@ -58,21 +58,20 @@ var titleSortOrders = map[string]string{
 
 // titleItem adalah bentuk judul pada endpoint katalog (§7.2).
 type titleItem struct {
-	ID              int64    `json:"id"`
-	Provider        string   `json:"provider"`
-	Kind            string   `json:"kind"`
-	Title           string   `json:"title"`
-	Slug            string   `json:"slug"`
-	Synopsis        any      `json:"synopsis"`
-	ReleaseYear     any      `json:"release_year"`
-	ContentRating   any      `json:"content_rating"`
-	Language        any      `json:"language"`
-	PosterURL       any      `json:"poster_url"`
-	BackdropURL     any      `json:"backdrop_url"`
-	DurationSeconds any      `json:"duration_seconds"`
-	EpisodeCount    int64    `json:"episode_count"`
-	Genres          []string `json:"genres"`
-	Playable        bool     `json:"playable"`
+	ID              int64  `json:"id"`
+	Provider        string `json:"provider"`
+	Kind            string `json:"kind"`
+	Title           string `json:"title"`
+	Slug            string `json:"slug"`
+	Synopsis        any    `json:"synopsis"`
+	ReleaseYear     any    `json:"release_year"`
+	ContentRating   any    `json:"content_rating"`
+	Language        any    `json:"language"`
+	PosterURL       any    `json:"poster_url"`
+	BackdropURL     any    `json:"backdrop_url"`
+	DurationSeconds any    `json:"duration_seconds"`
+	EpisodeCount    int64  `json:"episode_count"`
+	Playable        bool   `json:"playable"`
 }
 
 // seasonItem adalah satu baris data.seasons pada detail judul (§7.3).
@@ -100,13 +99,6 @@ type episodeItem struct {
 	StillURL        any   `json:"still_url"`
 	PlayableID      any   `json:"playable_id"`
 	Ready           bool  `json:"ready"`
-}
-
-// genreItem adalah satu baris daftar genre (§7.1).
-type genreItem struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
-	Slug string `json:"slug"`
 }
 
 // rowScanner adalah irisan yang dipenuhi *sql.Row maupun *sql.Rows.
@@ -165,52 +157,8 @@ func scanTitleItem(sc rowScanner) (titleItem, error) {
 	item.PosterURL = generationMediaURL(artLabel, poster.String)
 	item.BackdropURL = generationMediaURL(artLabel, backdrop.String)
 	item.DurationSeconds = nullInt64(duration)
-	item.Genres = []string{}
 	item.Playable = true
 	return item, nil
-}
-
-// handleGenres melayani GET /genres.
-func (s *server) handleGenres(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	fields := map[string]string{}
-	page := parsePagination(q, fields)
-	if s.validationFailed(w, fields) {
-		return
-	}
-
-	ctx := r.Context()
-	var total int64
-	if err := s.read.QueryRowContext(ctx, `SELECT COUNT(*) FROM genres`).Scan(&total); err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-
-	rows, err := s.read.QueryContext(ctx,
-		`SELECT id, name, slug FROM genres ORDER BY name COLLATE NOCASE ASC LIMIT ? OFFSET ?`,
-		page.PerPage, page.offset(),
-	)
-	if err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-	defer rows.Close()
-
-	items := make([]genreItem, 0, page.PerPage)
-	for rows.Next() {
-		var item genreItem
-		if err := rows.Scan(&item.ID, &item.Name, &item.Slug); err != nil {
-			s.internalError(w, r, err)
-			return
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-
-	response.Success(w, listData[genreItem]{Items: items, Meta: page.meta(total)})
 }
 
 // listData adalah bentuk data endpoint list (§4, R12).
@@ -240,8 +188,6 @@ func (s *server) handleTitles(w http.ResponseWriter, r *http.Request) {
 		fields["kind"] = "harus movie atau series"
 	}
 
-	genre := strings.TrimSpace(q.Get("genre"))
-
 	order, okOrder := titleSortOrders[strings.TrimSpace(q.Get("sort"))]
 	if !okOrder {
 		fields["sort"] = "nilai tidak didukung"
@@ -261,14 +207,6 @@ func (s *server) handleTitles(w http.ResponseWriter, r *http.Request) {
 	if kind != "" {
 		conditions = append(conditions, "t.kind = ?")
 		args = append(args, kind)
-	}
-	if genre != "" {
-		conditions = append(conditions, `EXISTS (
-			SELECT 1 FROM title_genres tg
-			JOIN genres g ON g.id = tg.genre_id
-			WHERE tg.title_id = t.id AND g.slug = ?
-		)`)
-		args = append(args, genre)
 	}
 
 	where := " WHERE " + strings.Join(conditions, " AND ")
@@ -303,55 +241,7 @@ func (s *server) handleTitles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	genres, err := s.genresByTitle(ctx, items)
-	if err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-	for i := range items {
-		if names, found := genres[items[i].ID]; found {
-			items[i].Genres = names
-		}
-	}
-
 	response.Success(w, listData[titleItem]{Items: items, Meta: page.meta(total)})
-}
-
-// genresByTitle mengambil nama genre untuk sekumpulan judul sekaligus, terurut
-// menurut nama agar output deterministik.
-func (s *server) genresByTitle(ctx context.Context, items []titleItem) (map[int64][]string, error) {
-	out := make(map[int64][]string, len(items))
-	if len(items) == 0 {
-		return out, nil
-	}
-
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(items)), ",")
-	args := make([]any, len(items))
-	for i := range items {
-		args[i] = items[i].ID
-	}
-
-	rows, err := s.read.QueryContext(ctx,
-		`SELECT tg.title_id, g.name
-		 FROM title_genres tg JOIN genres g ON g.id = tg.genre_id
-		 WHERE tg.title_id IN (`+placeholders+`)
-		 ORDER BY tg.title_id, g.name COLLATE NOCASE ASC`, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var (
-			titleID int64
-			name    string
-		)
-		if err := rows.Scan(&titleID, &name); err != nil {
-			return nil, err
-		}
-		out[titleID] = append(out[titleID], name)
-	}
-	return out, rows.Err()
 }
 
 // loadTitle mengambil satu judul beserta status ketersediaannya pada generation
@@ -412,15 +302,6 @@ func (s *server) handleTitleDetail(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.internalError(w, r, err)
 		return
-	}
-
-	genres, err := s.genresByTitle(ctx, []titleItem{item})
-	if err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-	if names, found := genres[item.ID]; found {
-		item.Genres = names
 	}
 
 	response.Success(w, titleDetail{
@@ -616,14 +497,13 @@ const (
 
 // searchTitleItem adalah satu judul pada hasil GET /search (§7.5).
 type searchTitleItem struct {
-	ID           int64    `json:"id"`
-	Kind         string   `json:"kind"`
-	Title        string   `json:"title"`
-	ReleaseYear  any      `json:"release_year"`
-	PosterURL    any      `json:"poster_url"`
-	Genres       []string `json:"genres"`
-	EpisodeCount int64    `json:"episode_count"`
-	Match        string   `json:"match"`
+	ID           int64  `json:"id"`
+	Kind         string `json:"kind"`
+	Title        string `json:"title"`
+	ReleaseYear  any    `json:"release_year"`
+	PosterURL    any    `json:"poster_url"`
+	EpisodeCount int64  `json:"episode_count"`
+	Match        string `json:"match"`
 }
 
 // searchEpisodeItem adalah satu episode pada hasil GET /search (§7.5).
@@ -694,7 +574,6 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	if kind != "" && kind != "movie" && kind != "series" {
 		fields["kind"] = "harus movie atau series"
 	}
-	genre := strings.TrimSpace(q.Get("genre"))
 
 	if s.validationFailed(w, fields) {
 		return
@@ -707,7 +586,7 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if searchType == "all" || searchType == "title" {
-		titles, total, err := s.searchTitles(r.Context(), search, kind, genre, limit)
+		titles, total, err := s.searchTitles(r.Context(), search, kind, limit)
 		if err != nil {
 			s.internalError(w, r, err)
 			return
@@ -717,7 +596,7 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if searchType == "all" || searchType == "episode" {
-		episodes, total, err := s.searchEpisodes(r.Context(), search, kind, genre, limit)
+		episodes, total, err := s.searchEpisodes(r.Context(), search, kind, limit)
 		if err != nil {
 			s.internalError(w, r, err)
 			return
@@ -731,7 +610,7 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 // searchTitles mengembalikan judul yang cocok pada kolom titles.title, terurut
 // menurut aturan §4.1 (prefix lebih dulu, lalu terbaru).
-func (s *server) searchTitles(ctx context.Context, search, kind, genre string, limit int64) ([]searchTitleItem, int64, error) {
+func (s *server) searchTitles(ctx context.Context, search, kind string, limit int64) ([]searchTitleItem, int64, error) {
 	conditions := []string{
 		"t.is_published = 1",
 		titleAvailable,
@@ -742,14 +621,6 @@ func (s *server) searchTitles(ctx context.Context, search, kind, genre string, l
 	if kind != "" {
 		conditions = append(conditions, "t.kind = ?")
 		args = append(args, kind)
-	}
-	if genre != "" {
-		conditions = append(conditions, `EXISTS (
-			SELECT 1 FROM title_genres tg
-			JOIN genres g ON g.id = tg.genre_id
-			WHERE tg.title_id = t.id AND g.slug = ?
-		)`)
-		args = append(args, genre)
 	}
 
 	where := " WHERE " + strings.Join(conditions, " AND ")
@@ -783,25 +654,16 @@ func (s *server) searchTitles(ctx context.Context, search, kind, genre string, l
 		return nil, 0, err
 	}
 
-	genres, err := s.genresByTitle(ctx, titles)
-	if err != nil {
-		return nil, 0, err
-	}
 	for _, item := range titles {
-		entry := searchTitleItem{
+		items = append(items, searchTitleItem{
 			ID:           item.ID,
 			Kind:         item.Kind,
 			Title:        item.Title,
 			ReleaseYear:  item.ReleaseYear,
 			PosterURL:    item.PosterURL,
-			Genres:       genres[item.ID],
 			EpisodeCount: item.EpisodeCount,
 			Match:        "title",
-		}
-		if entry.Genres == nil {
-			entry.Genres = []string{}
-		}
-		items = append(items, entry)
+		})
 	}
 
 	return items, total, nil
@@ -810,7 +672,7 @@ func (s *server) searchTitles(ctx context.Context, search, kind, genre string, l
 // searchEpisodes mengembalikan episode yang namanya cocok. Episode yang hanya
 // cocok karena judulnya cocok tidak diikutkan, sehingga satu episode tidak
 // pernah muncul dua kali (§7.5).
-func (s *server) searchEpisodes(ctx context.Context, search, kind, genre string, limit int64) ([]searchEpisodeItem, int64, error) {
+func (s *server) searchEpisodes(ctx context.Context, search, kind string, limit int64) ([]searchEpisodeItem, int64, error) {
 	conditions := []string{
 		"t.is_published = 1",
 		titleAvailable,
@@ -821,14 +683,6 @@ func (s *server) searchEpisodes(ctx context.Context, search, kind, genre string,
 	if kind != "" {
 		conditions = append(conditions, "t.kind = ?")
 		args = append(args, kind)
-	}
-	if genre != "" {
-		conditions = append(conditions, `EXISTS (
-			SELECT 1 FROM title_genres tg
-			JOIN genres g ON g.id = tg.genre_id
-			WHERE tg.title_id = t.id AND g.slug = ?
-		)`)
-		args = append(args, genre)
 	}
 
 	const episodesFrom = ` FROM episodes e JOIN titles t ON t.id = e.title_id`

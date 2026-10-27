@@ -795,205 +795,6 @@
               ]
             },
             {
-              "name": "genres",
-              "description": "",
-              "item": [
-                {
-                  "id": "f3d7df7b-e032-4d5b-a650-5f71e71a3b1b",
-                  "name": "Daftar genre",
-                  "request": {
-                    "name": "Daftar genre",
-                    "description": {
-                      "content": "Tidak mensyaratkan generation aktif.",
-                      "type": "text/plain"
-                    },
-                    "url": {
-                      "path": [
-                        "api",
-                        "v1",
-                        "genres"
-                      ],
-                      "host": [
-                        "{{baseUrl}}"
-                      ],
-                      "query": [
-                        {
-                          "disabled": false,
-                          "description": {
-                            "content": "",
-                            "type": "text/plain"
-                          },
-                          "key": "page",
-                          "value": "1"
-                        },
-                        {
-                          "disabled": false,
-                          "description": {
-                            "content": "",
-                            "type": "text/plain"
-                          },
-                          "key": "per_page",
-                          "value": "50"
-                        }
-                      ],
-                      "variable": []
-                    },
-                    "header": [
-                      {
-                        "key": "Accept",
-                        "value": "application/json"
-                      }
-                    ],
-                    "method": "GET",
-                    "body": {},
-                    "auth": {
-                      "type": "bearer",
-                      "bearer": [
-                        {
-                          "key": "token",
-                          "value": "{{bearerToken}}"
-                        }
-                      ]
-                    }
-                  },
-                  "response": [
-                    {
-                      "id": "2b5b2521-3f28-455c-a4d6-97c317907c72",
-                      "name": "Daftar genre",
-                      "originalRequest": {
-                        "url": {
-                          "path": [
-                            "api",
-                            "v1",
-                            "genres"
-                          ],
-                          "host": [
-                            "{{baseUrl}}"
-                          ],
-                          "query": [
-                            {
-                              "disabled": false,
-                              "description": {
-                                "content": "",
-                                "type": "text/plain"
-                              },
-                              "key": "page",
-                              "value": "1"
-                            },
-                            {
-                              "disabled": false,
-                              "description": {
-                                "content": "",
-                                "type": "text/plain"
-                              },
-                              "key": "per_page",
-                              "value": "50"
-                            }
-                          ],
-                          "variable": []
-                        },
-                        "header": [
-                          {
-                            "key": "Accept",
-                            "value": "application/json"
-                          },
-                          {
-                            "description": {
-                              "content": "Added as a part of security scheme: bearer",
-                              "type": "text/plain"
-                            },
-                            "key": "Authorization",
-                            "value": "Bearer <token>"
-                          }
-                        ],
-                        "method": "GET",
-                        "body": {}
-                      },
-                      "status": "OK",
-                      "code": 200,
-                      "header": [
-                        {
-                          "key": "Content-Type",
-                          "value": "application/json"
-                        }
-                      ],
-                      "body": "{\n  \"code\": \"<integer>\",\n  \"msg\": \"<string>\",\n  \"errors\": [\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    },\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    }\n  ],\n  \"data\": {\n    \"items\": [\n      {\n        \"id\": \"<integer>\",\n        \"name\": \"<string>\",\n        \"slug\": \"<string>\"\n      },\n      {\n        \"id\": \"<integer>\",\n        \"name\": \"<string>\",\n        \"slug\": \"<string>\"\n      }\n    ],\n    \"meta\": {\n      \"page\": \"<integer>\",\n      \"per_page\": \"<integer>\",\n      \"total\": \"<integer>\",\n      \"total_pages\": \"<integer>\"\n    }\n  }\n}",
-                      "cookie": [],
-                      "_postman_previewlanguage": "json"
-                    },
-                    {
-                      "id": "54449596-215f-438f-bc2f-03a08b0e08a6",
-                      "name": "Token tidak ada atau tidak valid",
-                      "originalRequest": {
-                        "url": {
-                          "path": [
-                            "api",
-                            "v1",
-                            "genres"
-                          ],
-                          "host": [
-                            "{{baseUrl}}"
-                          ],
-                          "query": [
-                            {
-                              "disabled": false,
-                              "description": {
-                                "content": "",
-                                "type": "text/plain"
-                              },
-                              "key": "page",
-                              "value": "1"
-                            },
-                            {
-                              "disabled": false,
-                              "description": {
-                                "content": "",
-                                "type": "text/plain"
-                              },
-                              "key": "per_page",
-                              "value": "50"
-                            }
-                          ],
-                          "variable": []
-                        },
-                        "header": [
-                          {
-                            "key": "Accept",
-                            "value": "application/json"
-                          },
-                          {
-                            "description": {
-                              "content": "Added as a part of security scheme: bearer",
-                              "type": "text/plain"
-                            },
-                            "key": "Authorization",
-                            "value": "Bearer <token>"
-                          }
-                        ],
-                        "method": "GET",
-                        "body": {}
-                      },
-                      "status": "Unauthorized",
-                      "code": 401,
-                      "header": [
-                        {
-                          "key": "Content-Type",
-                          "value": "application/json"
-                        }
-                      ],
-                      "body": "{\n  \"code\": \"<integer>\",\n  \"msg\": \"<string>\",\n  \"data\": \"\",\n  \"errors\": [\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    },\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    }\n  ]\n}",
-                      "cookie": [],
-                      "_postman_previewlanguage": "json"
-                    }
-                  ],
-                  "event": [],
-                  "protocolProfileBehavior": {
-                    "disableBodyPruning": true
-                  }
-                }
-              ]
-            },
-            {
               "name": "titles",
               "description": "",
               "item": [
@@ -1051,15 +852,6 @@
                           },
                           "key": "kind",
                           "value": "series"
-                        },
-                        {
-                          "disabled": false,
-                          "description": {
-                            "content": "Slug genre.",
-                            "type": "text/plain"
-                          },
-                          "key": "genre",
-                          "value": "<string>"
                         },
                         {
                           "disabled": false,
@@ -1145,15 +937,6 @@
                             {
                               "disabled": false,
                               "description": {
-                                "content": "Slug genre.",
-                                "type": "text/plain"
-                              },
-                              "key": "genre",
-                              "value": "<string>"
-                            },
-                            {
-                              "disabled": false,
-                              "description": {
                                 "content": " (This can only be one of -updated_at,updated_at,title,-title,-release_year,release_year)",
                                 "type": "text/plain"
                               },
@@ -1188,7 +971,7 @@
                           "value": "application/json"
                         }
                       ],
-                      "body": "{\n  \"code\": \"<integer>\",\n  \"msg\": \"<string>\",\n  \"errors\": [\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    },\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    }\n  ],\n  \"data\": {\n    \"items\": [\n      {\n        \"id\": \"<long>\",\n        \"provider\": \"<string>\",\n        \"kind\": \"movie\",\n        \"title\": \"<string>\",\n        \"slug\": \"<string>\",\n        \"synopsis\": \"<string>\",\n        \"release_year\": \"<integer>\",\n        \"content_rating\": \"<string>\",\n        \"language\": \"<string>\",\n        \"poster_url\": \"<string>\",\n        \"backdrop_url\": \"<string>\",\n        \"duration_seconds\": \"<integer>\",\n        \"episode_count\": \"<integer>\",\n        \"genres\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"playable\": \"<boolean>\"\n      },\n      {\n        \"id\": \"<long>\",\n        \"provider\": \"<string>\",\n        \"kind\": \"movie\",\n        \"title\": \"<string>\",\n        \"slug\": \"<string>\",\n        \"synopsis\": \"<string>\",\n        \"release_year\": \"<integer>\",\n        \"content_rating\": \"<string>\",\n        \"language\": \"<string>\",\n        \"poster_url\": \"<string>\",\n        \"backdrop_url\": \"<string>\",\n        \"duration_seconds\": \"<integer>\",\n        \"episode_count\": \"<integer>\",\n        \"genres\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"playable\": \"<boolean>\"\n      }\n    ],\n    \"meta\": {\n      \"page\": \"<integer>\",\n      \"per_page\": \"<integer>\",\n      \"total\": \"<integer>\",\n      \"total_pages\": \"<integer>\"\n    }\n  }\n}",
+                      "body": "{\n  \"code\": \"<integer>\",\n  \"msg\": \"<string>\",\n  \"errors\": [\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    },\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    }\n  ],\n  \"data\": {\n    \"items\": [\n      {\n        \"id\": \"<long>\",\n        \"provider\": \"<string>\",\n        \"kind\": \"movie\",\n        \"title\": \"<string>\",\n        \"slug\": \"<string>\",\n        \"synopsis\": \"<string>\",\n        \"release_year\": \"<integer>\",\n        \"content_rating\": \"<string>\",\n        \"language\": \"<string>\",\n        \"poster_url\": \"<string>\",\n        \"backdrop_url\": \"<string>\",\n        \"duration_seconds\": \"<integer>\",\n        \"episode_count\": \"<integer>\",\n        \"playable\": \"<boolean>\"\n      },\n      {\n        \"id\": \"<long>\",\n        \"provider\": \"<string>\",\n        \"kind\": \"movie\",\n        \"title\": \"<string>\",\n        \"slug\": \"<string>\",\n        \"synopsis\": \"<string>\",\n        \"release_year\": \"<integer>\",\n        \"content_rating\": \"<string>\",\n        \"language\": \"<string>\",\n        \"poster_url\": \"<string>\",\n        \"backdrop_url\": \"<string>\",\n        \"duration_seconds\": \"<integer>\",\n        \"episode_count\": \"<integer>\",\n        \"playable\": \"<boolean>\"\n      }\n    ],\n    \"meta\": {\n      \"page\": \"<integer>\",\n      \"per_page\": \"<integer>\",\n      \"total\": \"<integer>\",\n      \"total_pages\": \"<integer>\"\n    }\n  }\n}",
                       "cookie": [],
                       "_postman_previewlanguage": "json"
                     },
@@ -1241,15 +1024,6 @@
                               },
                               "key": "kind",
                               "value": "series"
-                            },
-                            {
-                              "disabled": false,
-                              "description": {
-                                "content": "Slug genre.",
-                                "type": "text/plain"
-                              },
-                              "key": "genre",
-                              "value": "<string>"
                             },
                             {
                               "disabled": false,
@@ -1341,15 +1115,6 @@
                               },
                               "key": "kind",
                               "value": "series"
-                            },
-                            {
-                              "disabled": false,
-                              "description": {
-                                "content": "Slug genre.",
-                                "type": "text/plain"
-                              },
-                              "key": "genre",
-                              "value": "<string>"
                             },
                             {
                               "disabled": false,
@@ -2044,15 +1809,6 @@
                           },
                           "key": "kind",
                           "value": "series"
-                        },
-                        {
-                          "disabled": false,
-                          "description": {
-                            "content": "Slug genre.",
-                            "type": "text/plain"
-                          },
-                          "key": "genre",
-                          "value": "<string>"
                         }
                       ],
                       "variable": []
@@ -2125,15 +1881,6 @@
                               },
                               "key": "kind",
                               "value": "series"
-                            },
-                            {
-                              "disabled": false,
-                              "description": {
-                                "content": "Slug genre.",
-                                "type": "text/plain"
-                              },
-                              "key": "genre",
-                              "value": "<string>"
                             }
                           ],
                           "variable": []
@@ -2163,7 +1910,7 @@
                           "value": "application/json"
                         }
                       ],
-                      "body": "{\n  \"code\": \"<integer>\",\n  \"msg\": \"<string>\",\n  \"errors\": [\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    },\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    }\n  ],\n  \"data\": {\n    \"titles\": [\n      {\n        \"id\": \"<long>\",\n        \"provider\": \"<string>\",\n        \"kind\": \"movie\",\n        \"title\": \"<string>\",\n        \"slug\": \"<string>\",\n        \"synopsis\": \"<string>\",\n        \"release_year\": \"<integer>\",\n        \"content_rating\": \"<string>\",\n        \"language\": \"<string>\",\n        \"poster_url\": \"<string>\",\n        \"backdrop_url\": \"<string>\",\n        \"duration_seconds\": \"<integer>\",\n        \"episode_count\": \"<integer>\",\n        \"genres\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"playable\": \"<boolean>\"\n      },\n      {\n        \"id\": \"<long>\",\n        \"provider\": \"<string>\",\n        \"kind\": \"series\",\n        \"title\": \"<string>\",\n        \"slug\": \"<string>\",\n        \"synopsis\": \"<string>\",\n        \"release_year\": \"<integer>\",\n        \"content_rating\": \"<string>\",\n        \"language\": \"<string>\",\n        \"poster_url\": \"<string>\",\n        \"backdrop_url\": \"<string>\",\n        \"duration_seconds\": \"<integer>\",\n        \"episode_count\": \"<integer>\",\n        \"genres\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"playable\": \"<boolean>\"\n      }\n    ],\n    \"episodes\": [\n      {\n        \"id\": \"<long>\",\n        \"season_number\": \"<integer>\",\n        \"episode_number\": \"<integer>\",\n        \"name\": \"<string>\",\n        \"synopsis\": \"<string>\",\n        \"duration_seconds\": \"<integer>\",\n        \"air_date\": \"<string>\",\n        \"still_url\": \"<string>\",\n        \"playable_id\": \"<long>\",\n        \"ready\": \"<boolean>\"\n      },\n      {\n        \"id\": \"<long>\",\n        \"season_number\": \"<integer>\",\n        \"episode_number\": \"<integer>\",\n        \"name\": \"<string>\",\n        \"synopsis\": \"<string>\",\n        \"duration_seconds\": \"<integer>\",\n        \"air_date\": \"<string>\",\n        \"still_url\": \"<string>\",\n        \"playable_id\": \"<long>\",\n        \"ready\": \"<boolean>\"\n      }\n    ],\n    \"meta\": {\n      \"limit\": \"<integer>\",\n      \"titles_total\": \"<integer>\",\n      \"episodes_total\": \"<integer>\"\n    }\n  }\n}",
+                      "body": "{\n  \"code\": \"<integer>\",\n  \"msg\": \"<string>\",\n  \"errors\": [\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    },\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    }\n  ],\n  \"data\": {\n    \"titles\": [\n      {\n        \"id\": \"<long>\",\n        \"provider\": \"<string>\",\n        \"kind\": \"movie\",\n        \"title\": \"<string>\",\n        \"slug\": \"<string>\",\n        \"synopsis\": \"<string>\",\n        \"release_year\": \"<integer>\",\n        \"content_rating\": \"<string>\",\n        \"language\": \"<string>\",\n        \"poster_url\": \"<string>\",\n        \"backdrop_url\": \"<string>\",\n        \"duration_seconds\": \"<integer>\",\n        \"episode_count\": \"<integer>\",\n        \"playable\": \"<boolean>\"\n      },\n      {\n        \"id\": \"<long>\",\n        \"provider\": \"<string>\",\n        \"kind\": \"series\",\n        \"title\": \"<string>\",\n        \"slug\": \"<string>\",\n        \"synopsis\": \"<string>\",\n        \"release_year\": \"<integer>\",\n        \"content_rating\": \"<string>\",\n        \"language\": \"<string>\",\n        \"poster_url\": \"<string>\",\n        \"backdrop_url\": \"<string>\",\n        \"duration_seconds\": \"<integer>\",\n        \"episode_count\": \"<integer>\",\n        \"playable\": \"<boolean>\"\n      }\n    ],\n    \"episodes\": [\n      {\n        \"id\": \"<long>\",\n        \"season_number\": \"<integer>\",\n        \"episode_number\": \"<integer>\",\n        \"name\": \"<string>\",\n        \"synopsis\": \"<string>\",\n        \"duration_seconds\": \"<integer>\",\n        \"air_date\": \"<string>\",\n        \"still_url\": \"<string>\",\n        \"playable_id\": \"<long>\",\n        \"ready\": \"<boolean>\"\n      },\n      {\n        \"id\": \"<long>\",\n        \"season_number\": \"<integer>\",\n        \"episode_number\": \"<integer>\",\n        \"name\": \"<string>\",\n        \"synopsis\": \"<string>\",\n        \"duration_seconds\": \"<integer>\",\n        \"air_date\": \"<string>\",\n        \"still_url\": \"<string>\",\n        \"playable_id\": \"<long>\",\n        \"ready\": \"<boolean>\"\n      }\n    ],\n    \"meta\": {\n      \"limit\": \"<integer>\",\n      \"titles_total\": \"<integer>\",\n      \"episodes_total\": \"<integer>\"\n    }\n  }\n}",
                       "cookie": [],
                       "_postman_previewlanguage": "json"
                     },
@@ -2216,15 +1963,6 @@
                               },
                               "key": "kind",
                               "value": "series"
-                            },
-                            {
-                              "disabled": false,
-                              "description": {
-                                "content": "Slug genre.",
-                                "type": "text/plain"
-                              },
-                              "key": "genre",
-                              "value": "<string>"
                             }
                           ],
                           "variable": []
@@ -2307,15 +2045,6 @@
                               },
                               "key": "kind",
                               "value": "series"
-                            },
-                            {
-                              "disabled": false,
-                              "description": {
-                                "content": "Slug genre.",
-                                "type": "text/plain"
-                              },
-                              "key": "genre",
-                              "value": "<string>"
                             }
                           ],
                           "variable": []
@@ -4149,7 +3878,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"code\": \"<integer>\",\n  \"msg\": \"<string>\",\n  \"errors\": [\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    },\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    }\n  ],\n  \"data\": {\n    \"items\": [\n      {\n        \"provider\": \"<string>\",\n        \"category\": \"<string>\",\n        \"id\": \"<string>\",\n        \"slug\": \"<string>\",\n        \"title\": \"<string>\",\n        \"description\": \"<string>\",\n        \"poster_url\": \"<string>\",\n        \"year\": \"<integer>\",\n        \"episode_count\": \"<integer>\",\n        \"age_rating\": \"<string>\",\n        \"genres\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"published_at\": \"<string>\",\n        \"already_added\": \"<boolean>\"\n      },\n      {\n        \"provider\": \"<string>\",\n        \"category\": \"<string>\",\n        \"id\": \"<string>\",\n        \"slug\": \"<string>\",\n        \"title\": \"<string>\",\n        \"description\": \"<string>\",\n        \"poster_url\": \"<string>\",\n        \"year\": \"<integer>\",\n        \"episode_count\": \"<integer>\",\n        \"age_rating\": \"<string>\",\n        \"genres\": [\n          \"<string>\",\n          \"<string>\"\n        ],\n        \"published_at\": \"<string>\",\n        \"already_added\": \"<boolean>\"\n      }\n    ],\n    \"meta\": {\n      \"page\": \"<integer>\",\n      \"per_page\": \"<integer>\",\n      \"total\": \"<integer>\",\n      \"last_page\": \"<integer>\"\n    }\n  }\n}",
+                  "body": "{\n  \"code\": \"<integer>\",\n  \"msg\": \"<string>\",\n  \"errors\": [\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    },\n    {\n      \"field\": \"<string>\",\n      \"message\": \"<string>\"\n    }\n  ],\n  \"data\": {\n    \"items\": [\n      {\n        \"provider\": \"<string>\",\n        \"category\": \"<string>\",\n        \"id\": \"<string>\",\n        \"slug\": \"<string>\",\n        \"title\": \"<string>\",\n        \"description\": \"<string>\",\n        \"poster_url\": \"<string>\",\n        \"year\": \"<integer>\",\n        \"episode_count\": \"<integer>\",\n        \"age_rating\": \"<string>\",\n        \"published_at\": \"<string>\",\n        \"already_added\": \"<boolean>\"\n      },\n      {\n        \"provider\": \"<string>\",\n        \"category\": \"<string>\",\n        \"id\": \"<string>\",\n        \"slug\": \"<string>\",\n        \"title\": \"<string>\",\n        \"description\": \"<string>\",\n        \"poster_url\": \"<string>\",\n        \"year\": \"<integer>\",\n        \"episode_count\": \"<integer>\",\n        \"age_rating\": \"<string>\",\n        \"published_at\": \"<string>\",\n        \"already_added\": \"<boolean>\"\n      }\n    ],\n    \"meta\": {\n      \"page\": \"<integer>\",\n      \"per_page\": \"<integer>\",\n      \"total\": \"<integer>\",\n      \"last_page\": \"<integer>\"\n    }\n  }\n}",
                   "cookie": [],
                   "_postman_previewlanguage": "json"
                 },

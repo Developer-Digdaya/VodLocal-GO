@@ -53,7 +53,7 @@ Konten berasal dari dua penyedia:
 
 ## 2. Fitur
 
-- **Katalog offline** — judul, episode, genre, pencarian, dan poster.
+- **Katalog offline** — judul, episode, pencarian, dan poster.
 - **Pemilihan konten dari panel** — modal List Content dengan tab **Movie**,
   **Series**, dan **Short (Dramahits)**, pagination, checkbox yang bertahan
   antar-halaman, dan penanda “Sudah ada”.
@@ -309,7 +309,6 @@ Semua response JSON memakai envelope:
 | `POST` | `/api/v1/devices/register` | – | Registrasi tablet, dapat token |
 | `GET` | `/api/v1/devices/me` | Bearer | Info device |
 | `POST` | `/api/v1/devices/me/heartbeat` | Bearer | Tandai online |
-| `GET` | `/api/v1/genres` | Bearer | Daftar genre |
 | `GET` | `/api/v1/titles` | Bearer | Daftar judul + filter |
 | `GET` | `/api/v1/titles/{id}` | Bearer | Detail judul |
 | `GET` | `/api/v1/titles/{id}/episodes` | Bearer | Daftar episode |

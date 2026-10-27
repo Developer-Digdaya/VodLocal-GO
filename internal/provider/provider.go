@@ -53,7 +53,6 @@ type Title struct {
 	PosterURL       string
 	BackdropURL     string
 	DurationSeconds int
-	Genres          []string
 }
 
 // Episode is one episode of a series. ExternalID is the upstream identifier of

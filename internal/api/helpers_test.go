@@ -73,12 +73,10 @@ func (f *fixture) exec(query string, args ...any) {
 	}
 }
 
-// seed mengisi provider, genre, generation aktif, katalog, dan rendisi.
+// seed mengisi provider, generation aktif, katalog, dan rendisi.
 func (f *fixture) seed() {
-	// Provider & genre.
+	// Provider.
 	f.exec(`INSERT INTO providers (id, code, name) VALUES (1, 'dens_tv', 'Dens TV')`)
-	f.exec(`INSERT INTO genres (id, name, slug) VALUES (1, 'Drama', 'drama')`)
-	f.exec(`INSERT INTO genres (id, name, slug) VALUES (2, 'Romantis', 'romantis')`)
 
 	// Generation aktif.
 	f.exec(`INSERT INTO generations (id, label, root_path, status, file_count, total_bytes)
@@ -103,10 +101,6 @@ func (f *fixture) seed() {
 	        VALUES (3, 1, 'ext-3', 'movie', 'Belum Siap', 'belum-siap', 'Belum terunduh',
 	            2025, '17+', 'id', 'dens_tv/3/poster.jpg', 'dens_tv/3/backdrop.jpg',
 	            6000, 1, '2026-10-20T09:00:00Z', '2026-10-20T12:00:00Z')`)
-
-	f.exec(`INSERT INTO title_genres (title_id, genre_id) VALUES (1, 1)`)
-	f.exec(`INSERT INTO title_genres (title_id, genre_id) VALUES (2, 2)`)
-	f.exec(`INSERT INTO title_genres (title_id, genre_id) VALUES (3, 2)`)
 
 	// Episode.
 	f.exec(`INSERT INTO episodes (id, title_id, external_id, season_number, episode_number, name,

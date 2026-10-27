@@ -18,19 +18,18 @@ import (
 // contentEnvelope adalah bentuk payload GET /content/short.
 type contentEnvelope struct {
 	Items []struct {
-		Provider     string   `json:"provider"`
-		Category     string   `json:"category"`
-		ID           string   `json:"id"`
-		Slug         string   `json:"slug"`
-		Title        string   `json:"title"`
-		Description  string   `json:"description"`
-		PosterURL    string   `json:"poster_url"`
-		Year         int      `json:"year"`
-		EpisodeCount int      `json:"episode_count"`
-		AgeRating    string   `json:"age_rating"`
-		Genres       []string `json:"genres"`
-		PublishedAt  string   `json:"published_at"`
-		AlreadyAdded bool     `json:"already_added"`
+		Provider     string `json:"provider"`
+		Category     string `json:"category"`
+		ID           string `json:"id"`
+		Slug         string `json:"slug"`
+		Title        string `json:"title"`
+		Description  string `json:"description"`
+		PosterURL    string `json:"poster_url"`
+		Year         int    `json:"year"`
+		EpisodeCount int    `json:"episode_count"`
+		AgeRating    string `json:"age_rating"`
+		PublishedAt  string `json:"published_at"`
+		AlreadyAdded bool   `json:"already_added"`
 	} `json:"items"`
 	Meta struct {
 		Page     int `json:"page"`
@@ -55,7 +54,6 @@ func seriesPage(page, perPage, total, lastPage int) catalog.SeriesPage {
 			Year:         2025,
 			EpisodeCount: 10 + i,
 			AgeRating:    "13+",
-			Genres:       []string{"drama"},
 			PublishedAt:  "2025-01-02T00:00:00Z",
 		})
 	}
@@ -117,9 +115,6 @@ func TestContentShortList(t *testing.T) {
 	}
 	if first.PosterURL != "https://cdn.example/series-2-1.jpg" {
 		t.Fatalf("poster_url = %q", first.PosterURL)
-	}
-	if len(first.Genres) != 1 || first.Genres[0] != "drama" {
-		t.Fatalf("genres = %v, mau [drama]", first.Genres)
 	}
 	if payload.Meta.Page != 2 || payload.Meta.PerPage != 3 || payload.Meta.Total != 7 || payload.Meta.LastPage != 3 {
 		t.Fatalf("meta = %+v, mau page 2 / per_page 3 / total 7 / last_page 3", payload.Meta)
@@ -214,7 +209,7 @@ func TestContentShortMarksAlreadyAdded(t *testing.T) {
 	}
 	wantKeys := []string{
 		"provider", "category", "id", "slug", "title", "description",
-		"poster_url", "year", "episode_count", "age_rating", "genres",
+		"poster_url", "year", "episode_count", "age_rating",
 		"published_at", "already_added",
 	}
 	for _, key := range wantKeys {
@@ -260,9 +255,6 @@ func TestContentShortMarksAlreadyAdded(t *testing.T) {
 	}
 	if first.Year != 2025 || first.AgeRating != "13+" || first.PublishedAt != "2025-01-02T00:00:00Z" {
 		t.Fatalf("metadata item pertama tidak lengkap: %+v", first)
-	}
-	if len(first.Genres) != 1 || first.Genres[0] != "drama" {
-		t.Fatalf("genres = %v, mau [drama]", first.Genres)
 	}
 }
 

@@ -95,7 +95,6 @@ func NewRouter(cfg Config) http.Handler {
 		pr.Get("/devices/me", s.handleDeviceMe)
 		pr.Post("/devices/me/heartbeat", s.handleDeviceHeartbeat)
 
-		pr.Get("/genres", s.handleGenres)
 		pr.Get("/search", s.handleSearch)
 		pr.Get("/titles", s.handleTitles)
 		pr.Get("/titles/{id}", s.handleTitleDetail)

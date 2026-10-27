@@ -267,7 +267,7 @@ func TestGetJSONPathAndQuery(t *testing.T) {
 	// A trailing slash on the base URL and a leading slash on the path must not
 	// produce a doubled slash.
 	c := NewClient(srv.URL+"/", 2*time.Second)
-	query := url.Values{"page": {"2"}, "genre": {"drama"}}
+	query := url.Values{"page": {"2"}, "kind": {"movie"}}
 
 	var out decodeTarget
 	if err := c.GetJSON(context.Background(), "/v1/titles", query, &out); err != nil {
@@ -277,11 +277,11 @@ func TestGetJSONPathAndQuery(t *testing.T) {
 	if got.path != "/v1/titles" {
 		t.Errorf("path = %q, want %q", got.path, "/v1/titles")
 	}
-	if got.raw != "genre=drama&page=2" {
-		t.Errorf("RawQuery = %q, want %q", got.raw, "genre=drama&page=2")
+	if got.raw != "kind=movie&page=2" {
+		t.Errorf("RawQuery = %q, want %q", got.raw, "kind=movie&page=2")
 	}
-	if got.request != "/v1/titles?genre=drama&page=2" {
-		t.Errorf("RequestURI = %q, want %q", got.request, "/v1/titles?genre=drama&page=2")
+	if got.request != "/v1/titles?kind=movie&page=2" {
+		t.Errorf("RequestURI = %q, want %q", got.request, "/v1/titles?kind=movie&page=2")
 	}
 	if !reflect.DeepEqual(got.values, query) {
 		t.Errorf("query = %v, want %v", got.values, query)

@@ -46,7 +46,6 @@ func allCodes() []struct {
 		{"CodeEpisodeNotFound", CodeEpisodeNotFound},
 		{"CodePlayableNotFound", CodePlayableNotFound},
 		{"CodePlayableNotReady", CodePlayableNotReady},
-		{"CodeGenreNotFound", CodeGenreNotFound},
 		{"CodeSearchQueryInvalid", CodeSearchQueryInvalid},
 		{"CodeContentNotPublished", CodeContentNotPublished},
 

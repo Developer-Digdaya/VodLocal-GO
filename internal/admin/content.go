@@ -166,18 +166,17 @@ func (c *contentCache) size() int {
 
 // contentItem adalah satu konten pada respons GET /content.
 type contentItem struct {
-	Provider     string   `json:"provider"`
-	Category     string   `json:"category"`
-	ID           string   `json:"id"`
-	Slug         string   `json:"slug"`
-	Title        string   `json:"title"`
-	Description  string   `json:"description"`
-	PosterURL    string   `json:"poster_url"`
-	Year         int      `json:"year"`
-	EpisodeCount int      `json:"episode_count"`
-	AgeRating    string   `json:"age_rating"`
-	Genres       []string `json:"genres"`
-	PublishedAt  string   `json:"published_at"`
+	Provider     string `json:"provider"`
+	Category     string `json:"category"`
+	ID           string `json:"id"`
+	Slug         string `json:"slug"`
+	Title        string `json:"title"`
+	Description  string `json:"description"`
+	PosterURL    string `json:"poster_url"`
+	Year         int    `json:"year"`
+	EpisodeCount int    `json:"episode_count"`
+	AgeRating    string `json:"age_rating"`
+	PublishedAt  string `json:"published_at"`
 	// AlreadyAdded menandai konten yang sudah punya rendition di database,
 	// sehingga modal tidak menawarkannya untuk dipilih (dan di-ingest) lagi.
 	AlreadyAdded bool `json:"already_added"`
@@ -224,15 +223,8 @@ func defaultProvider(category string) string {
 }
 
 // newContentItem menormalkan satu catalog.Series (yang sudah lewat
-// normalizeSeries) untuk JSON: genres tidak pernah null.
+// normalizeSeries) untuk JSON.
 func newContentItem(series catalog.Series) contentItem {
-	genres := make([]string, 0, len(series.Genres))
-	for _, genre := range series.Genres {
-		if trimmed := strings.TrimSpace(genre); trimmed != "" {
-			genres = append(genres, trimmed)
-		}
-	}
-
 	return contentItem{
 		Provider:     strings.TrimSpace(series.Provider),
 		Category:     strings.TrimSpace(series.Category),
@@ -244,7 +236,6 @@ func newContentItem(series catalog.Series) contentItem {
 		Year:         series.Year,
 		EpisodeCount: series.EpisodeCount,
 		AgeRating:    series.AgeRating,
-		Genres:       genres,
 		PublishedAt:  series.PublishedAt,
 	}
 }
@@ -725,7 +716,7 @@ const (
 //
 // Karena destruktif, permintaan ditolak selama masih ada sync run non-terminal
 // (is_active = 1) dan wajib menyertakan field confirm=PURGE. Tabel di luar
-// storage dan katalog — providers, genres, auth_users, devices, app_settings,
+// storage dan katalog — providers, auth_users, devices, app_settings,
 // audit_log — tidak pernah disentuh.
 //
 // Kegagalan menghapus folder menghentikan proses sebelum database diubah, agar

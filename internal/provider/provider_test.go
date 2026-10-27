@@ -27,7 +27,6 @@ func sampleTitles() []Title {
 			PosterURL:       "https://cdn.example.com/mv-1/poster.jpg",
 			BackdropURL:     "https://cdn.example.com/mv-1/backdrop.jpg",
 			DurationSeconds: 6480,
-			Genres:          []string{"drama", "romance"},
 		},
 		{
 			ExternalID:    "sr-1",
@@ -39,7 +38,6 @@ func sampleTitles() []Title {
 			Language:      "id",
 			Country:       "ID",
 			PosterURL:     "https://cdn.example.com/sr-1/poster.jpg",
-			Genres:        []string{"drama", "mystery"},
 		},
 	}
 }
@@ -170,7 +168,6 @@ func TestFakeResultIsACopy(t *testing.T) {
 		t.Fatalf("ListTitles() error = %v", err)
 	}
 	titles[0].Title = "diubah"
-	titles[0].Genres[0] = "diubah"
 	titles = titles[:1]
 
 	again, err := f.ListTitles(ctx)
