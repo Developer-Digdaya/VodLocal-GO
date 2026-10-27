@@ -593,6 +593,8 @@ melalui panel `/sync`:
 
 - **Export ke HDD** memilih drive tujuan dan konten lokal. Paket ditulis ke
   `<drive>/VOD-EXPORT/<package-id>/` berisi `manifest.json` + file media.
+- Konten yang sudah ada di paket pada drive tujuan ditandai **Sudah ada di HDD**;
+  penandanya hanya peringatan dan konten tetap bisa diexport ulang.
 - **List Content → Offline (HDD)** memindai paket pada drive yang sudah
   di-mount. Pilih konten lalu Import.
 - Import membuat generation baru, menyalin ke staging, memverifikasi SHA-256,

@@ -174,7 +174,7 @@
         <span class="small muted" id="export-status"></span>
       </div>
     </div>
-    <p class="muted small">Pilih konten yang sudah diunduh. Paket ditulis ke folder VOD-EXPORT di drive tujuan.</p>
+    <p class="muted small">Pilih konten yang sudah diunduh. Paket ditulis ke folder VOD-EXPORT di drive tujuan. Konten yang sudah ada di HDD tetap bisa diexport ulang.</p>
     <div id="export-list"><p class="muted">Memuat konten lokal…</p></div>
     <div class="pager" role="navigation" aria-label="Navigasi konten export">
       <button type="button" class="secondary" id="export-prev" disabled>‹ Sebelumnya</button>
@@ -964,6 +964,14 @@
         ' · ' + bytesLabel(item.bytes) +
         (item.copies > 1 ? ' · ada di ' + item.copies + ' batch (hanya sekali diexport)' : '');
       info.appendChild(meta);
+      if (item.already_exported) {
+        var exportedBadge = document.createElement('span');
+        exportedBadge.className = 'badge exported';
+        exportedBadge.textContent = 'Sudah ada di HDD';
+        if (item.exported_package) { exportedBadge.title = 'Paket: ' + item.exported_package; }
+        info.appendChild(exportedBadge);
+        card.classList.add('content-item-exported');
+      }
       card.appendChild(checkbox);
       if (item.poster_url) {
         var poster = document.createElement('img');
@@ -985,7 +993,9 @@
     loading.className = 'muted';
     loading.textContent = 'Memuat konten lokal…';
     listElement.appendChild(loading);
-    return fetchJSON('/transfer/local-content?page=' + encodeURIComponent(page) + '&per_page=30')
+    var drive = driveSelect.value ? '&drive=' + encodeURIComponent(driveSelect.value) : '';
+    return fetchJSON('/transfer/local-content?page=' + encodeURIComponent(page) +
+      '&per_page=30' + drive)
       .then(function (data) {
         content = data.items || [];
         var meta = data.meta || {};
@@ -1007,8 +1017,7 @@
     updatePager();
     clearError();
     if (typeof dialog.showModal === 'function') { dialog.showModal(); } else { dialog.setAttribute('open', 'open'); }
-    loadDrives();
-    loadContent(1);
+    loadDrives().then(function () { loadContent(1); });
   }
   function closeDialog() {
     if (typeof dialog.close === 'function') { dialog.close(); } else { dialog.removeAttribute('open'); }
@@ -1052,7 +1061,13 @@
       loadContent(currentPage);
     });
   }
-  if (driveSelect) { driveSelect.addEventListener('change', updateButton); }
+  if (driveSelect) {
+    driveSelect.addEventListener('change', function () {
+      clearError();
+      updateButton();
+      loadContent(1);
+    });
+  }
   if (prevButton) {
     prevButton.addEventListener('click', function () {
       if (currentPage > 1) { loadContent(currentPage - 1); }

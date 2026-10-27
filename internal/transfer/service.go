@@ -168,6 +168,11 @@ type LocalContent struct {
 	// Copies adalah jumlah generation yang memiliki judul yang sama. Hanya
 	// generation terbaru yang ditampilkan pada daftar export.
 	Copies int `json:"copies"`
+	// AlreadyExported menandai judul yang sudah ada di salah satu paket pada
+	// drive tujuan. Nilainya hanya diisi saat daftar diminta dengan drive.
+	AlreadyExported bool `json:"already_exported"`
+	// ExportedPackage adalah package id tempat judul itu ditemukan.
+	ExportedPackage string `json:"exported_package,omitempty"`
 }
 
 // ListLocalContent returns completed generation items that can be exported.

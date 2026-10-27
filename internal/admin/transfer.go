@@ -115,6 +115,18 @@ func (a *Admin) handleTransferLocalContent(w http.ResponseWriter, r *http.Reques
 	if items == nil {
 		items = []transfer.LocalContent{}
 	}
+
+	// Tandai judul yang sudah ada di paket pada drive tujuan. Scan gagal tidak
+	// menggagalkan daftar: item tetap tampil tanpa penanda.
+	if drive := strings.TrimSpace(r.URL.Query().Get("drive")); drive != "" && a.validTransferDrive(drive, false) {
+		keys, err := transfer.ExportedKeys(drive)
+		if err != nil {
+			a.log.Warn("admin: gagal memindai paket HDD", "drive", drive, "err", err)
+		} else {
+			transfer.MarkExported(items, keys)
+		}
+	}
+
 	response.Success(w, map[string]any{
 		"items": items,
 		"meta": map[string]any{
