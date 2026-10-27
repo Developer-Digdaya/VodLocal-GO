@@ -70,7 +70,7 @@ Konten berasal dari dua penyedia:
   pada batch mana pun yang sudah selesai. Tidak ada gate “generation aktif”.
 - **Preflight kapasitas disk** — menolak ingest bila pemakaian sudah mencapai ambang.
 - **Bersihkan katalog yatim** — title/episode/playable tanpa rendition ikut dihapus.
-- **Autentikasi tablet** — registrasi device, token Bearer, rotasi token, nonaktifkan.
+- **Autentikasi tablet** — registrasi device, token Bearer, nonaktifkan, hapus perangkat.
 - **Progress tonton** — lanjut tonton per perangkat, debounce di klien.
 - **Notifikasi sync** — webhook dan Telegram untuk hasil terminal.
 - **Alat bantu** — `cmd/loadtest` (uji beban HLS) dan `cmd/devseed` (konten sintetis).
@@ -253,7 +253,7 @@ Akun admin dibuat otomatis saat boot **hanya jika** `VODLOCAL_ADMIN_USER` dan
 | `/` | Ringkasan generation, katalog, storage, device online, sync terakhir |
 | `/sync` | Riwayat run, tombol **List Content**, tabel progres per series |
 | `/sync/{id}` | Detail run + progres konten (episode, rendition, persen, error) |
-| `/devices` | Daftar tablet, nonaktifkan/aktifkan, rotasi token |
+| `/devices` | Daftar tablet, nonaktifkan/aktifkan, hapus perangkat |
 | `/storage` | Daftar konten per series, hapus per konten, hapus semua konten |
 | `/settings` | Batas varian (default 720p), ambang storage, paralelisme sync |
 
@@ -319,6 +319,10 @@ Semua response JSON memakai envelope:
 | `GET` | `/api/v1/progress/{playable_id}` | Bearer | Posisi satu playable |
 | `POST` | `/api/v1/progress` | Bearer | Simpan posisi |
 | `GET` | `/media/{generation}/{path}` | – | Playlist, segmen, subtitle, poster |
+
+`POST /api/v1/devices/register` mewajibkan `mac_address`. MAC yang sudah terdaftar
+ditolak `409`; untuk tablet yang data lokalnya dihapus, hapus perangkat dari panel
+`/devices` lebih dulu, lalu tablet register ulang dengan MAC yang sama.
 
 Spesifikasi lengkap, termasuk contoh request/response dan error, tersedia di
 [`openapi.json`](./openapi.json) (OpenAPI 3.0.0). Impor langsung ke Postman.

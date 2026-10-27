@@ -74,7 +74,7 @@
       "post": {
         "tags": ["Device"],
         "summary": "Registrasi tablet",
-        "description": "Mendaftarkan tablet dan mengembalikan token Bearer. Token hanya ditampilkan sekali.",
+        "description": "Mendaftarkan tablet dan mengembalikan token Bearer. Token hanya ditampilkan sekali. `mac_address` wajib; MAC yang sudah terdaftar ditolak 409 — hapus perangkat lewat panel admin sebelum register ulang.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1217,11 +1217,11 @@
       },
       "DeviceRegisterRequest": {
         "type": "object",
-        "required": ["name"],
+        "required": ["name", "mac_address"],
         "properties": {
           "name": { "type": "string", "maxLength": 100, "example": "Tablet Kursi 12" },
           "seat_number": { "type": "string", "maxLength": 20, "example": "12" },
-          "mac_address": { "type": "string", "example": "AA:BB:CC:DD:EE:12" },
+          "mac_address": { "type": "string", "description": "MAC perangkat; wajib dan unik.", "example": "AA:BB:CC:DD:EE:12" },
           "app_version": { "type": "string", "maxLength": 20, "example": "1.0.3" }
         }
       },

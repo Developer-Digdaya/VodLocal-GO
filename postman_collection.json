@@ -211,7 +211,7 @@
                       "request": {
                         "name": "Registrasi tablet",
                         "description": {
-                          "content": "Mendaftarkan tablet dan mengembalikan token Bearer. Token hanya ditampilkan sekali.",
+                          "content": "Mendaftarkan tablet dan mengembalikan token Bearer. Token hanya ditampilkan sekali. `mac_address` wajib; MAC yang sudah terdaftar ditolak 409. Hapus perangkat lewat panel admin sebelum register ulang.",
                           "type": "text/plain"
                         },
                         "url": {

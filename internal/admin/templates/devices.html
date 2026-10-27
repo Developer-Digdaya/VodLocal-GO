@@ -68,9 +68,11 @@
             <button class="secondary" type="submit">Aktifkan</button>
           </form>
           {{end}}
-          <form class="inline" method="post" action="/devices/{{.ID}}/rotate-token">
+          <form class="inline" method="post" action="/devices/{{.ID}}/delete"
+                onsubmit="return confirm('Hapus perangkat ini? Riwayat tonton perangkat ini juga terhapus. Tindakan ini tidak bisa dibatalkan.');">
             <input type="hidden" name="_csrf" value="{{$.CSRF}}">
-            <button class="secondary" type="submit">Rotasi token</button>
+            <input type="hidden" name="confirm" value="DELETE">
+            <button class="danger" type="submit">Hapus</button>
           </form>
         </td>
       </tr>

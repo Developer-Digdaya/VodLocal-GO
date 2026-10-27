@@ -257,7 +257,7 @@ func (a *Admin) Mount(r chi.Router) {
 		pr.Get("/devices", a.handleDevices)
 		pr.With(csrf).Post("/devices/{id}/disable", a.handleDeviceDisable)
 		pr.With(csrf).Post("/devices/{id}/enable", a.handleDeviceEnable)
-		pr.With(csrf).Post("/devices/{id}/rotate-token", a.handleDeviceRotate)
+		pr.With(csrf).Post("/devices/{id}/delete", a.handleDeviceDelete)
 
 		pr.Get("/storage", a.handleStorage)
 		pr.With(csrf).Post("/storage/items/{id}/delete", a.handleStorageItemDelete)

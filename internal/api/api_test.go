@@ -13,8 +13,8 @@ import (
 )
 
 // TestDeviceRegister memastikan registrasi mengembalikan 201 + token sekali
-// pakai, menyimpan token sebagai hash, dan menolak MAC duplikat dengan
-// 409/2003 (tugas uji #1).
+// pakai, menyimpan token sebagai hash, mewajibkan MAC, dan menolak MAC duplikat
+// dengan 409/2003 (tugas uji #1).
 func TestDeviceRegister(t *testing.T) {
 	f := newFixture(t, nil)
 
@@ -101,8 +101,34 @@ func TestDeviceRegister(t *testing.T) {
 	if env.Code != response.CodeValidationError {
 		t.Fatalf("code validasi = %d, mau %d", env.Code, response.CodeValidationError)
 	}
-	if len(env.Errors) == 0 || env.Errors[0].Field != "body.name" {
-		t.Fatalf("errors = %+v, mau satu detail body.name", env.Errors)
+	var nameMissing bool
+	for _, detail := range env.Errors {
+		if detail.Field == "body.name" {
+			nameMissing = true
+		}
+	}
+	if !nameMissing {
+		t.Fatalf("errors = %+v, mau detail body.name", env.Errors)
+	}
+
+	// MAC wajib diisi.
+	env, rec = f.do(http.MethodPost, "/devices/register", "", map[string]any{
+		"name": "Tablet Tanpa MAC",
+	})
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status MAC kosong = %d, mau 422 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if env.Code != response.CodeValidationError {
+		t.Fatalf("code MAC kosong = %d, mau %d", env.Code, response.CodeValidationError)
+	}
+	var macMissing bool
+	for _, detail := range env.Errors {
+		if detail.Field == "body.mac_address" {
+			macMissing = true
+		}
+	}
+	if !macMissing {
+		t.Fatalf("errors = %+v, mau detail body.mac_address", env.Errors)
 	}
 
 	// Validasi format MAC.

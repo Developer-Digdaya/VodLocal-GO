@@ -133,6 +133,10 @@ type deviceDetail struct {
 }
 
 // handleDeviceRegister melayani POST /devices/register (publik).
+//
+// mac_address wajib karena menjadi identitas perangkat. MAC yang sudah terdaftar
+// ditolak: untuk tablet yang local storage-nya dihapus, admin harus menghapus
+// perangkat di panel /devices terlebih dahulu, lalu tablet register ulang.
 func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
 	if !decodeJSON(w, r, &req) {
@@ -157,7 +161,9 @@ func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 	if utf8.RuneCountInString(appVersion) > appVersionMax {
 		fields["body.app_version"] = "maksimal 20 karakter"
 	}
-	if strings.TrimSpace(req.MACAddress) != "" && !macPattern.MatchString(mac) {
+	if mac == "" {
+		fields["body.mac_address"] = "wajib diisi"
+	} else if !macPattern.MatchString(mac) {
 		fields["body.mac_address"] = "format MAC tidak valid"
 	}
 	if s.validationFailed(w, fields) {
@@ -165,17 +171,15 @@ func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	if mac != "" {
-		var exists int
-		err := s.write.QueryRowContext(ctx, `SELECT 1 FROM devices WHERE mac_address = ?`, mac).Scan(&exists)
-		switch {
-		case err == nil:
-			response.Error(w, response.CodeDeviceAlreadyRegistered, nil)
-			return
-		case !errors.Is(err, sql.ErrNoRows):
-			s.internalError(w, r, err)
-			return
-		}
+	var exists int
+	err := s.write.QueryRowContext(ctx, `SELECT 1 FROM devices WHERE mac_address = ?`, mac).Scan(&exists)
+	switch {
+	case err == nil:
+		response.Error(w, response.CodeDeviceAlreadyRegistered, nil)
+		return
+	case !errors.Is(err, sql.ErrNoRows):
+		s.internalError(w, r, err)
+		return
 	}
 
 	token, err := newDeviceToken()
@@ -188,7 +192,7 @@ func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 	res, err := s.write.ExecContext(ctx,
 		`INSERT INTO devices (name, seat_number, mac_address, token_hash, is_active, last_seen_at, created_at)
 		 VALUES (?, ?, ?, ?, 1, ?, ?)`,
-		name, nullIfBlank(seatNumber), nullIfBlank(mac), hashDeviceToken(token), now, now,
+		name, nullIfBlank(seatNumber), mac, hashDeviceToken(token), now, now,
 	)
 	if err != nil {
 		if isUniqueViolation(err, "mac_address") {

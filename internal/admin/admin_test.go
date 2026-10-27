@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -265,9 +264,7 @@ func TestSyncCancel(t *testing.T) {
 	}
 }
 
-var deviceTokenPattern = regexp.MustCompile(`mc_[A-Za-z0-9_-]{43}`)
-
-// TestDeviceActions memeriksa disable/enable dan rotasi token perangkat.
+// TestDeviceActions memeriksa disable/enable dan hapus perangkat.
 func TestDeviceActions(t *testing.T) {
 	f := newFixture(t)
 	f.login()
@@ -290,40 +287,6 @@ func TestDeviceActions(t *testing.T) {
 		t.Fatalf("is_active = %d, mau 1 setelah enable", got)
 	}
 
-	// Rotate token.
-	var before string
-	if err := f.db.QueryRow(`SELECT token_hash FROM devices WHERE id = 1`).Scan(&before); err != nil {
-		t.Fatalf("baca token_hash: %v", err)
-	}
-	rec = f.post("/devices/1/rotate-token", nil)
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("rotate: status = %d, mau 303 (body=%s)", rec.Code, rec.Body.String())
-	}
-
-	var after string
-	if err := f.db.QueryRow(`SELECT token_hash FROM devices WHERE id = 1`).Scan(&after); err != nil {
-		t.Fatalf("baca token_hash baru: %v", err)
-	}
-	if after == before {
-		t.Fatalf("token_hash tidak berubah setelah rotasi")
-	}
-
-	// Token baru hanya ditampilkan sekali lewat flash message.
-	page := f.get("/devices")
-	if page.Code != http.StatusOK {
-		t.Fatalf("GET /devices: status = %d, mau 200 (body=%s)", page.Code, page.Body.String())
-	}
-	token := deviceTokenPattern.FindString(page.Body.String())
-	if token == "" {
-		t.Fatalf("token baru tidak ditampilkan di halaman perangkat")
-	}
-	if hashToken(token) != after {
-		t.Fatalf("token yang ditampilkan bukan token tersimpan")
-	}
-	if strings.Contains(f.get("/devices").Body.String(), token) {
-		t.Fatalf("token ditampilkan lebih dari sekali")
-	}
-
 	// Filter dan pencarian tetap berfungsi.
 	list := f.get("/devices?q=Kursi&status=online&sort=name")
 	if list.Code != http.StatusOK {
@@ -332,6 +295,77 @@ func TestDeviceActions(t *testing.T) {
 	if !strings.Contains(list.Body.String(), "Tablet Kursi 12") {
 		t.Fatalf("pencarian perangkat tidak menemukan data")
 	}
+
+	// Halaman menampilkan tombol Hapus, bukan Rotasi token.
+	page := f.get("/devices")
+	if page.Code != http.StatusOK {
+		t.Fatalf("GET /devices: status = %d (body=%s)", page.Code, page.Body.String())
+	}
+	if !strings.Contains(page.Body.String(), "/devices/1/delete") {
+		t.Fatalf("halaman perangkat tidak memuat tombol hapus")
+	}
+	if strings.Contains(page.Body.String(), "rotate-token") {
+		t.Fatalf("halaman perangkat masih memuat tombol rotasi token")
+	}
+
+	// Seed riwayat tonton device 2 agar cascade bisa diperiksa.
+	f.exec(`INSERT INTO playback_progress (device_id, playable_id, position_seconds, duration_seconds)
+	        VALUES (2, 9001, 30, 2700)`)
+
+	// Confirm salah/kosong → 400, device dan progress tetap ada.
+	rec = f.post("/devices/2/delete", url.Values{"confirm": {"hapus"}})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("confirm salah: status = %d, mau 400 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if got := deviceExists(f, t, 2); got != 1 {
+		t.Fatalf("device 2 terhapus tanpa konfirmasi")
+	}
+	if got := deviceProgressRows(f, t, 2); got != 1 {
+		t.Fatalf("progress device 2 hilang tanpa konfirmasi")
+	}
+
+	rec = f.post("/devices/2/delete", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("tanpa confirm: status = %d, mau 400", rec.Code)
+	}
+
+	// confirm=DELETE → device dan progress terhapus.
+	rec = f.post("/devices/2/delete", url.Values{"confirm": {"DELETE"}})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("hapus device: status = %d, mau 303 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if got := deviceExists(f, t, 2); got != 0 {
+		t.Fatalf("baris device 2 masih ada setelah dihapus")
+	}
+	if got := deviceProgressRows(f, t, 2); got != 0 {
+		t.Fatalf("progress device 2 masih ada setelah device dihapus")
+	}
+
+	// Device tidak ada → 404.
+	rec = f.post("/devices/999/delete", url.Values{"confirm": {"DELETE"}})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("device tidak ada: status = %d, mau 404", rec.Code)
+	}
+}
+
+// deviceExists menghitung baris devices dengan ID tertentu.
+func deviceExists(f *fixture, t *testing.T, id int64) int {
+	t.Helper()
+	var count int
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM devices WHERE id = ?`, id).Scan(&count); err != nil {
+		t.Fatalf("hitung device: %v", err)
+	}
+	return count
+}
+
+// deviceProgressRows menghitung playback_progress milik device.
+func deviceProgressRows(f *fixture, t *testing.T, id int64) int {
+	t.Helper()
+	var count int
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM playback_progress WHERE device_id = ?`, id).Scan(&count); err != nil {
+		t.Fatalf("hitung progress: %v", err)
+	}
+	return count
 }
 
 // deviceActive membaca devices.is_active.

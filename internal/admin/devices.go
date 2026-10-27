@@ -2,21 +2,11 @@ package admin
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
-)
-
-// Parameter token perangkat (docs/api-spec.md §2/§6.1).
-const (
-	deviceTokenPrefix = "mc_"
-	deviceTokenBytes  = 32
 )
 
 // Nilai filter status perangkat (§10.4).
@@ -250,11 +240,16 @@ func (a *Admin) setDeviceActive(w http.ResponseWriter, r *http.Request, active b
 	http.Redirect(w, r, "/devices", http.StatusSeeOther)
 }
 
-// handleDeviceRotate melayani POST /devices/{id}/rotate-token.
+// handleDeviceDelete melayani POST /devices/{id}/delete.
 //
-// Token baru dibuat di sini, disimpan sebagai SHA-256 hex, dan hanya
-// ditampilkan sekali lewat flash message; token mentah tidak pernah di-log.
-func (a *Admin) handleDeviceRotate(w http.ResponseWriter, r *http.Request) {
+// Menghapus baris devices secara permanen. playback_progress milik perangkat
+// ikut terhapus lewat ON DELETE CASCADE.
+func (a *Admin) handleDeviceDelete(w http.ResponseWriter, r *http.Request) {
+	if strings.TrimSpace(r.PostFormValue("confirm")) != "DELETE" {
+		a.renderError(w, r, http.StatusBadRequest, "Konfirmasi hapus perangkat tidak valid.")
+		return
+	}
+
 	id, ok := pathID(r, "id")
 	if !ok {
 		a.renderError(w, r, http.StatusNotFound, "Perangkat tidak ditemukan.")
@@ -271,24 +266,16 @@ func (a *Admin) handleDeviceRotate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, hash, err := newDeviceToken()
-	if err != nil {
-		a.internalError(w, r, err, "Gagal membuat token perangkat baru.")
-		return
-	}
-
 	if _, err := a.write.ExecContext(r.Context(),
-		`UPDATE devices SET token_hash = ? WHERE id = ?`, hash, id,
+		`DELETE FROM devices WHERE id = ?`, id,
 	); err != nil {
-		a.internalError(w, r, err, "Gagal menyimpan token perangkat baru.")
+		a.internalError(w, r, err, "Gagal menghapus perangkat.")
 		return
 	}
 
-	a.log.Info("admin: token perangkat dirotasi",
-		"device_id", id, "username", a.sessionUsername(r))
-	a.flashTo(r, "success", fmt.Sprintf(
-		"Token baru untuk perangkat %q: %s — simpan sekarang, token hanya ditampilkan sekali.",
-		device.Name, token))
+	a.log.Info("admin: perangkat dihapus",
+		"device_id", id, "name", device.Name, "username", a.sessionUsername(r))
+	a.flashTo(r, "success", fmt.Sprintf("Perangkat %q dihapus.", device.Name))
 	http.Redirect(w, r, "/devices", http.StatusSeeOther)
 }
 
@@ -313,21 +300,4 @@ FROM devices WHERE id = ?`, id,
 	device.IsActive = isActive == 1
 	device.Status = deviceStatusName(device, a.nowUTC().Add(-onlineWindow).Format(timeLayout))
 	return &device, nil
-}
-
-// newDeviceToken membuat token perangkat "mc_"+base64url(32 byte acak) beserta
-// SHA-256 hex yang disimpan di database.
-func newDeviceToken() (token, hash string, err error) {
-	raw := make([]byte, deviceTokenBytes)
-	if _, err := rand.Read(raw); err != nil {
-		return "", "", fmt.Errorf("admin: buat token perangkat: %w", err)
-	}
-	token = deviceTokenPrefix + base64.RawURLEncoding.EncodeToString(raw)
-	return token, hashToken(token), nil
-}
-
-// hashToken menghitung SHA-256 hex dari token perangkat.
-func hashToken(token string) string {
-	sum := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(sum[:])
 }
