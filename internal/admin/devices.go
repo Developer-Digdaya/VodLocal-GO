@@ -9,12 +9,12 @@ import (
 	"strings"
 )
 
-// Nilai filter status perangkat (§10.4).
+// Nilai filter status perangkat (§10.4): halaman /devices hanya mengenal
+// perangkat aktif dan tidak aktif.
 const (
 	deviceStatusAll      = "all"
-	deviceStatusOnline   = "online"
-	deviceStatusOffline  = "offline"
-	deviceStatusDisabled = "disabled"
+	deviceStatusActive   = "active"
+	deviceStatusInactive = "inactive"
 )
 
 // deviceRow adalah satu baris devices untuk template.
@@ -25,7 +25,6 @@ type deviceRow struct {
 	MACAddress string
 	IPAddress  string
 	IsActive   bool
-	Status     string
 	LastSeenAt string
 	CreatedAt  string
 }
@@ -66,15 +65,14 @@ func (a *Admin) devicesData(w http.ResponseWriter, r *http.Request, errMessage s
 	search := normalizeQuery(queryGet(values, "q"))
 	status := strings.ToLower(strings.TrimSpace(queryGet(values, "status")))
 	switch status {
-	case deviceStatusOnline, deviceStatusOffline, deviceStatusDisabled:
+	case deviceStatusActive, deviceStatusInactive:
 	default:
 		status = deviceStatusAll
 	}
 	sortKey, orderBy := deviceOrderClause(strings.TrimSpace(queryGet(values, "sort")))
 	page, perPage := parsePage(values)
 
-	cutoff := a.nowUTC().Add(-onlineWindow).Format(timeLayout)
-	where, args := deviceFilter(search, status, cutoff)
+	where, args := deviceFilter(search, status)
 
 	data := devicesData{
 		base:    a.base(w, r, "Perangkat", "devices"),
@@ -104,7 +102,7 @@ func (a *Admin) devicesData(w http.ResponseWriter, r *http.Request, errMessage s
 
 	queryArgs := append(append([]any{}, args...), info.PerPage, info.offset())
 	rows, err := a.read.QueryContext(ctx, `
-SELECT id, name, COALESCE(seat_number, ''), COALESCE(mac_address, ''), COALESCE(ip_address, ''),
+SELECT id, COALESCE(name, ''), COALESCE(seat_number, ''), COALESCE(mac_address, ''), COALESCE(ip_address, ''),
        is_active, COALESCE(last_seen_at, ''), created_at
 FROM devices`+where+`
 ORDER BY `+orderBy+`
@@ -127,7 +125,6 @@ LIMIT ? OFFSET ?`, queryArgs...)
 			return data, false
 		}
 		device.IsActive = isActive == 1
-		device.Status = deviceStatusName(device, cutoff)
 		devices = append(devices, device)
 	}
 	if err := rows.Err(); err != nil {
@@ -139,24 +136,29 @@ LIMIT ? OFFSET ?`, queryArgs...)
 	return data, true
 }
 
-// deviceStatusName menghitung status tampilan sebuah perangkat (§10.4).
-func deviceStatusName(device deviceRow, cutoff string) string {
-	if !device.IsActive {
-		return deviceStatusDisabled
+// deviceLabel adalah sebutan perangkat pada flash message. Nama boleh kosong
+// (kolom name nullable), jadi dipakai nomor kursi lalu "ID <id>" sebagai
+// cadangan agar pesan tidak pernah berbunyi `Perangkat "" diaktifkan.`
+func deviceLabel(device *deviceRow) string {
+	if name := strings.TrimSpace(device.Name); name != "" {
+		return name
 	}
-	if device.LastSeenAt != "" && device.LastSeenAt >= cutoff {
-		return deviceStatusOnline
+	if seat := strings.TrimSpace(device.SeatNumber); seat != "" {
+		return seat
 	}
-	return deviceStatusOffline
+	return fmt.Sprintf("ID %d", device.ID)
 }
 
 // deviceOrderClause memetakan sort ke klausa ORDER BY yang diizinkan.
+//
+// name dan seat_number boleh NULL, jadi keduanya di-COALESCE agar urutan tidak
+// bergantung pada posisi NULL di SQLite.
 func deviceOrderClause(sort string) (key, orderBy string) {
 	switch sort {
 	case "seat_number":
-		return "seat_number", `COALESCE(seat_number, '') ASC, name ASC`
+		return "seat_number", `COALESCE(seat_number, '') ASC, COALESCE(name, '') ASC, id ASC`
 	case "name":
-		return "name", "name ASC, id ASC"
+		return "name", `COALESCE(name, '') ASC, id ASC`
 	case "-created_at":
 		return "-created_at", "created_at DESC, id DESC"
 	default:
@@ -165,9 +167,9 @@ func deviceOrderClause(sort string) (key, orderBy string) {
 }
 
 // deviceFilter menyusun klausa WHERE pencarian dan filter status.
-func deviceFilter(search, status, cutoff string) (string, []any) {
+func deviceFilter(search, status string) (string, []any) {
 	where := []string{"1 = 1"}
-	args := make([]any, 0, 5)
+	args := make([]any, 0, 4)
 
 	if search != "" {
 		pattern := likeContains(search)
@@ -179,13 +181,9 @@ func deviceFilter(search, status, cutoff string) (string, []any) {
 	}
 
 	switch status {
-	case deviceStatusOnline:
-		where = append(where, "is_active = 1 AND last_seen_at IS NOT NULL AND last_seen_at >= ?")
-		args = append(args, cutoff)
-	case deviceStatusOffline:
-		where = append(where, "is_active = 1 AND (last_seen_at IS NULL OR last_seen_at < ?)")
-		args = append(args, cutoff)
-	case deviceStatusDisabled:
+	case deviceStatusActive:
+		where = append(where, "is_active = 1")
+	case deviceStatusInactive:
 		where = append(where, "is_active = 0")
 	}
 
@@ -236,7 +234,7 @@ func (a *Admin) setDeviceActive(w http.ResponseWriter, r *http.Request, active b
 
 	a.log.Info("admin: status perangkat diubah",
 		"device_id", id, "is_active", value, "username", a.sessionUsername(r))
-	a.flashTo(r, "success", fmt.Sprintf("Perangkat %q %s.", device.Name, action))
+	a.flashTo(r, "success", fmt.Sprintf("Perangkat %q %s.", deviceLabel(device), action))
 	http.Redirect(w, r, "/devices", http.StatusSeeOther)
 }
 
@@ -275,7 +273,7 @@ func (a *Admin) handleDeviceDelete(w http.ResponseWriter, r *http.Request) {
 
 	a.log.Info("admin: perangkat dihapus",
 		"device_id", id, "name", device.Name, "username", a.sessionUsername(r))
-	a.flashTo(r, "success", fmt.Sprintf("Perangkat %q dihapus.", device.Name))
+	a.flashTo(r, "success", fmt.Sprintf("Perangkat %q dihapus.", deviceLabel(device)))
 	http.Redirect(w, r, "/devices", http.StatusSeeOther)
 }
 
@@ -286,7 +284,7 @@ func (a *Admin) deviceByID(ctx context.Context, id int64) (*deviceRow, error) {
 		isActive int
 	)
 	err := a.read.QueryRowContext(ctx, `
-SELECT id, name, COALESCE(seat_number, ''), COALESCE(mac_address, ''), COALESCE(ip_address, ''),
+SELECT id, COALESCE(name, ''), COALESCE(seat_number, ''), COALESCE(mac_address, ''), COALESCE(ip_address, ''),
        is_active, COALESCE(last_seen_at, ''), created_at
 FROM devices WHERE id = ?`, id,
 	).Scan(&device.ID, &device.Name, &device.SeatNumber, &device.MACAddress,
@@ -298,6 +296,5 @@ FROM devices WHERE id = ?`, id,
 		return nil, err
 	}
 	device.IsActive = isActive == 1
-	device.Status = deviceStatusName(device, a.nowUTC().Add(-onlineWindow).Format(timeLayout))
 	return &device, nil
 }

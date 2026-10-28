@@ -3,6 +3,7 @@ package admin_test
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -287,8 +288,8 @@ func TestDeviceActions(t *testing.T) {
 		t.Fatalf("is_active = %d, mau 1 setelah enable", got)
 	}
 
-	// Filter dan pencarian tetap berfungsi.
-	list := f.get("/devices?q=Kursi&status=online&sort=name")
+	// Filter dan pencarian tetap berfungsi (status: semua/aktif/tidak aktif).
+	list := f.get("/devices?q=Kursi&status=active&sort=name")
 	if list.Code != http.StatusOK {
 		t.Fatalf("GET /devices?q: status = %d", list.Code)
 	}
@@ -346,6 +347,136 @@ func TestDeviceActions(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("device tidak ada: status = %d, mau 404", rec.Code)
 	}
+}
+
+// TestDevicesActiveInactive memastikan /devices hanya mengenal status aktif dan
+// tidak aktif: filter, badge, kolom nama kosong, dan flash enable/disable.
+func TestDevicesActiveInactive(t *testing.T) {
+	f := newFixture(t)
+	f.login()
+
+	page := f.get("/devices")
+	if page.Code != http.StatusOK {
+		t.Fatalf("GET /devices: status = %d (body=%s)", page.Code, page.Body.String())
+	}
+	body := page.Body.String()
+	for _, want := range []string{
+		`<option value="all" selected>semua</option>`,
+		`<option value="active"`,
+		`<option value="inactive"`,
+		`>aktif</option>`,
+		`>tidak aktif</option>`,
+		`<span class="badge active">aktif</span>`,
+		`<span class="badge inactive">tidak aktif</span>`,
+		`placeholder="nama, kursi, identitas, IP"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("halaman perangkat tidak memuat %q (body=%s)", want, body)
+		}
+	}
+	// Tidak boleh ada sisa konsep online/offline/disabled pada filter.
+	for _, unwanted := range []string{`value="online"`, `value="offline"`, `value="disabled"`} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("halaman perangkat masih memuat filter %q", unwanted)
+		}
+	}
+
+	// Kolom Nama memakai isi kolom name apa adanya.
+	if got := deviceNameCell(t, body, 1); got != "Tablet Kursi 12" {
+		t.Fatalf("sel nama perangkat 1 = %q, mau %q", got, "Tablet Kursi 12")
+	}
+
+	// Filter aktif hanya memuat perangkat aktif, tidak aktif sebaliknya.
+	activeBody := f.get("/devices?status=active").Body.String()
+	if !strings.Contains(activeBody, "Tablet Kursi 12") || strings.Contains(activeBody, "Tablet Kursi 13") {
+		t.Fatalf("filter aktif salah (body=%s)", activeBody)
+	}
+	inactiveBody := f.get("/devices?status=inactive").Body.String()
+	if !strings.Contains(inactiveBody, "Tablet Kursi 13") || strings.Contains(inactiveBody, "Tablet Kursi 12") {
+		t.Fatalf("filter tidak aktif salah (body=%s)", inactiveBody)
+	}
+
+	// Status lama (mis. online) tidak lagi berarti apa pun: jatuh ke semua.
+	unknownBody := f.get("/devices?status=online").Body.String()
+	if !strings.Contains(unknownBody, `<option value="all" selected>semua</option>`) {
+		t.Fatalf("status tak dikenal tidak jatuh ke filter semua (body=%s)", unknownBody)
+	}
+	if !strings.Contains(unknownBody, "Tablet Kursi 12") || !strings.Contains(unknownBody, "Tablet Kursi 13") {
+		t.Fatalf("status tak dikenal tidak menampilkan semua perangkat (body=%s)", unknownBody)
+	}
+
+	// Perangkat tanpa nama (kolom name boleh NULL): kolom Nama menampilkan "—"
+	// dan flash memakai nomor kursi, bukan nama kosong.
+	f.exec(`INSERT INTO devices (id, name, seat_number, mac_address, ip_address, token_hash,
+	                             is_active, created_at)
+	        VALUES (3, NULL, '7', 'AA:BB:CC:DD:EE:73', '192.0.2.73', ?, 0, '2026-10-01T00:00:00Z')`,
+		hashToken("mc_token-lama-perangkat-73"))
+	// Perangkat tanpa nama dan tanpa kursi: flash memakai "ID <id>".
+	f.exec(`INSERT INTO devices (id, name, token_hash, is_active, created_at)
+	        VALUES (4, NULL, ?, 0, '2026-10-01T00:00:00Z')`,
+		hashToken("mc_token-lama-perangkat-74"))
+
+	if got := deviceNameCell(t, f.get("/devices").Body.String(), 3); got != "—" {
+		t.Fatalf("sel nama perangkat tanpa nama = %q, mau %q", got, "—")
+	}
+
+	if rec := f.post("/devices/3/enable", nil); rec.Code != http.StatusSeeOther {
+		t.Fatalf("enable perangkat tanpa nama: status = %d (body=%s)", rec.Code, rec.Body.String())
+	}
+	flash := flashText(t, f.get("/devices").Body.String())
+	if !strings.Contains(flash, "7") || !strings.Contains(flash, "diaktifkan") {
+		t.Fatalf("flash = %q, mau menyebut nomor kursi 7", flash)
+	}
+	if strings.Contains(flash, `""`) || strings.Contains(flash, "&#34;&#34;") {
+		t.Fatalf("flash = %q, label perangkat kosong", flash)
+	}
+
+	if rec := f.post("/devices/4/disable", nil); rec.Code != http.StatusSeeOther {
+		t.Fatalf("disable perangkat tanpa nama/kursi: status = %d", rec.Code)
+	}
+	flash = flashText(t, f.get("/devices").Body.String())
+	if !strings.Contains(flash, "ID 4") || !strings.Contains(flash, "dinonaktifkan") {
+		t.Fatalf("flash = %q, mau menyebut ID 4", flash)
+	}
+}
+
+// deviceNameCell mengembalikan isi sel kolom Nama pada baris perangkat id.
+func deviceNameCell(t *testing.T, body string, id int64) string {
+	t.Helper()
+
+	marker := fmt.Sprintf("<td>%d</td>", id)
+	start := strings.Index(body, marker)
+	if start < 0 {
+		t.Fatalf("baris perangkat %d tidak ditemukan", id)
+	}
+	rest := body[start+len(marker):]
+	open := strings.Index(rest, "<td>")
+	if open < 0 {
+		t.Fatalf("sel nama perangkat %d tidak ditemukan", id)
+	}
+	cell := rest[open+len("<td>"):]
+	end := strings.Index(cell, "</td>")
+	if end < 0 {
+		t.Fatalf("sel nama perangkat %d tidak tertutup", id)
+	}
+	return cell[:end]
+}
+
+// flashText mengembalikan teks flash message pertama pada halaman.
+func flashText(t *testing.T, body string) string {
+	t.Helper()
+
+	const marker = `role="status">`
+	start := strings.Index(body, marker)
+	if start < 0 {
+		t.Fatalf("flash message tidak tampil (body=%s)", body)
+	}
+	rest := body[start+len(marker):]
+	end := strings.Index(rest, "</p>")
+	if end < 0 {
+		t.Fatalf("flash message tidak tertutup (body=%s)", body)
+	}
+	return rest[:end]
 }
 
 // deviceExists menghitung baris devices dengan ID tertentu.

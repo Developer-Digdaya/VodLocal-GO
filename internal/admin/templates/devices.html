@@ -3,16 +3,15 @@
 
 <form class="filters" method="get" action="/devices">
   <div>
-    <label for="q">Cari (nama, kursi, MAC, IP)</label>
-    <input id="q" type="text" name="q" value="{{.Q}}">
+    <label for="q">Cari</label>
+    <input id="q" type="text" name="q" value="{{.Q}}" placeholder="nama, kursi, identitas, IP">
   </div>
   <div>
     <label for="status">Status</label>
     <select id="status" name="status">
       <option value="all"{{if eq .Status "all"}} selected{{end}}>semua</option>
-      <option value="online"{{if eq .Status "online"}} selected{{end}}>online</option>
-      <option value="offline"{{if eq .Status "offline"}} selected{{end}}>offline</option>
-      <option value="disabled"{{if eq .Status "disabled"}} selected{{end}}>disabled</option>
+      <option value="active"{{if eq .Status "active"}} selected{{end}}>aktif</option>
+      <option value="inactive"{{if eq .Status "inactive"}} selected{{end}}>tidak aktif</option>
     </select>
   </div>
   <div>
@@ -50,11 +49,11 @@
     {{range .Devices}}
       <tr>
         <td>{{.ID}}</td>
-        <td>{{.Name}}</td>
+        <td>{{if .Name}}{{.Name}}{{else}}—{{end}}</td>
         <td>{{if .SeatNumber}}{{.SeatNumber}}{{else}}—{{end}}</td>
         <td class="small">{{if .MACAddress}}{{.MACAddress}}{{else}}—{{end}}</td>
         <td class="small">{{if .IPAddress}}{{.IPAddress}}{{else}}—{{end}}</td>
-        <td><span class="badge {{.Status}}">{{.Status}}</span></td>
+        <td>{{if .IsActive}}<span class="badge active">aktif</span>{{else}}<span class="badge inactive">tidak aktif</span>{{end}}</td>
         <td class="nowrap">{{when .LastSeenAt}}</td>
         <td>
           {{if .IsActive}}
