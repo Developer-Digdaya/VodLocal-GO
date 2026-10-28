@@ -6,11 +6,13 @@
 .apidocs { --ad-border: #e2e6ea; --ad-ink: var(--pico-primary, #12324f); --ad-muted: #5b6672; }
 .apidocs .apidocs-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; margin: 0 0 .5rem; }
 .apidocs .apidocs-meta button { height: 1.9rem; font-size: .78rem; }
-.apidocs .apidocs-layout { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 1rem; align-items: start; }
-.apidocs .apidocs-nav { min-width: 0; padding: .8rem; }
+.apidocs .apidocs-layout { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 1rem; align-items: start; }
+.apidocs .apidocs-nav { display: block; min-width: 0; padding: .8rem; }
+.apidocs .apidocs-nav > * { max-width: 100%; }
 .apidocs .apidocs-try { min-width: 0; padding: .9rem 1rem; }
 .apidocs .apidocs-filter { width: 100%; margin: 0 0 .45rem; }
 .apidocs .apidocs-count { margin: 0 0 .5rem; }
+.apidocs #apidoc-servers, .apidocs .apidocs-count { overflow-wrap: anywhere; }
 .apidocs .apidocs-groups { display: flex; flex-direction: column; gap: .85rem; max-height: 60vh; overflow-y: auto; overflow-x: hidden; padding-right: .15rem; }
 .apidocs .apidocs-group { min-width: 0; }
 .apidocs .apidocs-group > h3 { font-size: .74rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ad-muted); margin: 0 0 .35rem; }
@@ -46,7 +48,7 @@
 .apidocs [hidden] { display: none !important; }
 @media (max-width: 900px) {
   .apidocs .apidocs-layout { grid-template-columns: 1fr; }
-  .apidocs .apidocs-groups { max-height: none; overflow: visible; }
+  .apidocs .apidocs-groups { max-height: 45vh; overflow-y: auto; }
   .apidocs .apidocs-response { max-height: none; }
 }
 @media (max-width: 720px) {
@@ -65,7 +67,7 @@
   <p class="small muted" id="apidoc-servers">Memuat spesifikasi…</p>
 
   <div class="apidocs-layout">
-    <nav class="card apidocs-nav" aria-label="Daftar operasi">
+    <div class="card apidocs-nav" role="navigation" aria-label="Daftar operasi">
       <label for="apidoc-filter">Cari operasi</label>
       <input type="text" id="apidoc-filter" class="apidocs-filter" placeholder="path, method, atau ringkasan" autocomplete="off" spellcheck="false">
       <p class="small muted apidocs-count" id="apidoc-count">Memuat…</p>
@@ -74,7 +76,7 @@
         <p class="muted small">Memuat spesifikasi…</p>
       </div>
       <p class="muted small" id="apidoc-no-match" hidden>Tidak ada operasi yang cocok dengan pencarian.</p>
-    </nav>
+    </div>
 
     <section class="card apidocs-try" aria-label="Coba request">
       <div class="apidocs-try-head">
@@ -410,6 +412,12 @@
     return groups;
   }
 
+  // breakablePath menyisipkan peluang patah baris setelah "/" supaya path
+  // panjang terpotong di batas segmen, bukan di tengah kata.
+  function breakablePath(path) {
+    return String(path).replace(/\//g, '/\u200B');
+  }
+
   function renderList() {
     clearChildren(listEl);
     nodes = [];
@@ -431,7 +439,7 @@
         button.className = 'apidoc-op';
         button.setAttribute('aria-current', 'false');
         button.appendChild(textEl('span', 'badge apidoc-method m-' + op.method, op.method.toUpperCase()));
-        button.appendChild(textEl('span', 'apidoc-op-path', op.path));
+        button.appendChild(textEl('span', 'apidoc-op-path', breakablePath(op.path)));
         button.appendChild(textEl('span', 'apidoc-op-summary', op.summary || '(tanpa ringkasan)'));
         button.addEventListener('click', function () { selectOp(op); });
         li.appendChild(button);
@@ -579,6 +587,15 @@
     }
 
     hintEl.textContent = op.method.toUpperCase() + ' ' + window.location.origin + op.path;
+
+    // Di layar sempit daftar dan panel coba bertumpuk vertikal; gulir ke panel
+    // coba supaya hasil pilihan langsung terlihat.
+    if (window.matchMedia && window.matchMedia('(max-width: 900px)').matches) {
+      var panel = document.querySelector('.apidocs-try');
+      if (panel && panel.scrollIntoView) {
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
   }
 
   function showRequestError(text) {
