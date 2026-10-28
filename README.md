@@ -282,10 +282,12 @@ berbeda dari jenis trigger.
 
 ## 8. API
 
-Base URL:
+Spesifikasi **API mobile** (endpoint panel admin tidak termasuk) tersedia di
+[`openapi.json`](./openapi.json) (OpenAPI 3.0.0). Impor langsung ke Postman.
 
-- Development: `http://127.0.0.1:8080`
-- Produksi: `http://<server>`
+[`postman_collection.json`](./postman_collection.json) berisi **API mobile** (tanpa endpoint panel admin) dan memakai
+collection variable `baseUrl`, `bearerToken`, dan `apiKey`. Isi nilainya sekali di tab
+**Variables** collection; seluruh request memakai token yang sama.
 
 Semua response JSON memakai envelope:
 
@@ -331,12 +333,22 @@ Semua response JSON memakai envelope:
 ditolak `409`; untuk tablet yang data lokalnya dihapus, hapus perangkat dari panel
 `/devices` lebih dulu, lalu tablet register ulang dengan MAC yang sama.
 
-Spesifikasi **API mobile** (endpoint panel admin tidak termasuk) tersedia di
-[`openapi.json`](./openapi.json) (OpenAPI 3.0.0). Impor langsung ke Postman.
+Kalau masih bingung **urutan pemakaiannya**, lanjut ke [9 Alur Playback](#9-alur-playback).
+Endpoint di tabel atas bukan daftar yang bisa dipanggil sembarang urutan: tablet harus
+register dulu untuk mendapat token, lalu memakai token itu pada request berikutnya.
 
-[`postman_collection.json`](./postman_collection.json) berisi **API mobile** (tanpa endpoint panel admin) dan memakai
-collection variable `baseUrl`, `bearerToken`, dan `apiKey`. Isi nilainya sekali di tab
-**Variables** collection; seluruh request memakai token yang sama.
+```text
+POST /api/v1/devices/register            -> simpan token Bearer
+GET  /api/v1/titles                      -> pilih judul
+GET  /api/v1/titles/{id}                 -> detail + daftar episode
+GET  /api/v1/playables/{id}              -> varian ready + master_playlist_url
+GET  /api/v1/playables/{id}/master.m3u8  -> serahkan URL ke ExoPlayer
+POST /api/v1/progress                    -> simpan posisi tiap 10-20 detik
+```
+
+Dua kesalahan yang paling sering: (1) memanggil `/api/v1/titles` sebelum register sehingga
+dapat `401`; (2) memakai `title_id` pada `POST /api/v1/progress` padahal yang diminta
+`playable_id` dari `episodes[].playable_id` atau `first_playable_id`.
 
 **Generation = batch unduhan, bukan gerbang visibilitas**
 
