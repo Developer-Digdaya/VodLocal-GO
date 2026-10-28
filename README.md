@@ -250,12 +250,13 @@ Akun admin dibuat otomatis saat boot **hanya jika** `VODLOCAL_ADMIN_USER` dan
 
 | Halaman | Fungsi |
 | --- | --- |
-| `/` | Ringkasan generation, katalog, storage, device online, sync terakhir |
+| `/` | Ringkasan generation, katalog, storage, perangkat aktif, sync terakhir |
 | `/sync` | Riwayat run, tombol **List Content**, tabel progres per series |
 | `/sync/{id}` | Detail run + progres konten (episode, rendition, persen, error, retry) |
-| `/devices` | Daftar tablet, nonaktifkan/aktifkan, hapus perangkat |
+| `/devices` | Daftar tablet (aktif/tidak aktif), nonaktifkan/aktifkan, hapus perangkat |
 | `/storage` | Daftar konten per series, hapus per konten, hapus semua konten |
 | `/settings` | Batas varian (default 720p), ambang storage, paralelisme sync |
+| `/api-docs` | Melihat spesifikasi OpenAPI dan mencoba request dari browser |
 
 **List Content.** Modal dengan tiga tab: **Movie**, **Series**, dan **Short
 (Dramahits)**. Tab Movie/Series memanggil API Densgo, tab Short memanggil API
@@ -283,7 +284,9 @@ berbeda dari jenis trigger.
 ## 8. API
 
 Spesifikasi **API mobile** (endpoint panel admin tidak termasuk) tersedia di
-[`openapi.json`](./openapi.json) (OpenAPI 3.0.0). Impor langsung ke Postman.
+[`openapi.json`](./openapi.json) (OpenAPI 3.0.0). Impor langsung ke Postman. Spesifikasi
+yang sama juga bisa dibaca dan dicoba langsung dari browser di halaman `/api-docs`
+(perlu login admin).
 
 [`postman_collection.json`](./postman_collection.json) berisi **API mobile** (tanpa endpoint panel admin) dan memakai
 collection variable `baseUrl`, `bearerToken`, dan `apiKey`. Isi nilainya sekali di tab
@@ -317,7 +320,7 @@ Semua response JSON memakai envelope:
 | `GET` | `/health`, `/ready` | – | Status proses dan kesiapan |
 | `POST` | `/api/v1/devices/register` | – | Registrasi tablet, dapat token |
 | `GET` | `/api/v1/devices/me` | Bearer | Info device |
-| `POST` | `/api/v1/devices/me/heartbeat` | Bearer | Tandai online |
+| `POST` | `/api/v1/devices/me/heartbeat` | Bearer | Perbarui `last_seen_at` |
 | `GET` | `/api/v1/titles` | Bearer | Daftar judul + filter |
 | `GET` | `/api/v1/titles/{id}` | Bearer | Detail judul |
 | `GET` | `/api/v1/titles/{id}/episodes` | Bearer | Daftar episode |
@@ -329,9 +332,46 @@ Semua response JSON memakai envelope:
 | `POST` | `/api/v1/progress` | Bearer | Simpan posisi |
 | `GET` | `/media/{generation}/{path}` | – | Playlist, segmen, subtitle, poster |
 
-`POST /api/v1/devices/register` mewajibkan `mac_address`. MAC yang sudah terdaftar
-ditolak `409`; untuk tablet yang data lokalnya dihapus, hapus perangkat dari panel
-`/devices` lebih dulu, lalu tablet register ulang dengan MAC yang sama.
+**Registrasi perangkat**
+
+- `mac_address` adalah **identitas perangkat**. Isinya boleh MAC maupun **device ID** apa
+  pun (mis. `android-9f3c1a7b`); server **tidak memvalidasi format MAC**.
+- `seat_number` wajib diisi. `name` **tidak perlu dikirim** klien; bila tetap dikirim,
+  nilainya opsional (maks 100 karakter) dan hanya disimpan sebagai nama perangkat.
+- `is_reset` opsional dengan default `false`. Bila `false` dan identitas sudah dipakai,
+  server membalas `409` kode `2003` dengan `data` berisi `device_id`, `seat_number`, dan
+  `name` perangkat yang memakai identitas itu, sehingga aplikasi bisa menampilkan
+  “sudah digunakan di kursi X”.
+- Bila `is_reset: true`, server menimpa perangkat lama: token baru, `id` tetap, riwayat
+  tonton dipertahankan, dan respons sukses memuat `reset: true`.
+
+Body registrasi:
+
+```json
+{
+  "mac_address": "android-9f3c1a7b",
+  "seat_number": "12A",
+  "is_reset": false
+}
+```
+
+Respons bila identitas sudah dipakai:
+
+```json
+{
+  "code": 2003,
+  "msg": "Perangkat sudah terdaftar",
+  "data": {
+    "device_id": 17,
+    "seat_number": "12A",
+    "name": "Tablet 12A"
+  },
+  "errors": []
+}
+```
+
+Contoh alur: tablet menghapus data lokal → register ulang dengan `is_reset: true`.
+Alternatifnya, admin menghapus perangkat di `/devices` lalu tablet register biasa.
 
 Kalau masih bingung **urutan pemakaiannya**, lanjut ke [9 Alur Playback](#9-alur-playback).
 Endpoint di tabel atas bukan daftar yang bisa dipanggil sembarang urutan: tablet harus
@@ -376,7 +416,7 @@ Alur tablet: **register → daftar judul → detail/episode → playable → mas
 progress**. Generation tidak pernah dipakai klien sebagai input; ia hanya informasi batch
 pada response.
 
-### 9.1 Register dan status online
+### 9.1 Register dan heartbeat
 
 ```text
 POST /api/v1/devices/register
@@ -384,23 +424,19 @@ POST /api/v1/devices/register
   -> semua request /api/v1 memakai Authorization: Bearer <token>
 ```
 
-Status online tidak memakai endpoint offline. Server menghitung:
-
-- online jika `last_seen_at` ≤ 5 menit;
-- offline jika `last_seen_at` lebih lama dari 5 menit atau belum pernah heartbeat;
-- `disabled` adalah status admin terpisah (`is_active=0`), bukan offline.
+Panel hanya mengenal dua status perangkat: **aktif** dan **tidak aktif** (`is_active`),
+yang diatur admin dari `/devices`; server tidak menghitung status koneksi sendiri.
 
 `POST /api/v1/devices/me/heartbeat` dan setiap request `/api/v1` yang terautentikasi
-memperbarui `last_seen_at`. Request media `/media/*` **tidak** memperbaruinya. Agar status
-online akurat selama menonton:
+memperbarui `last_seen_at`. Request media `/media/*` **tidak** memperbaruinya. Agar
+`last_seen_at` tetap akurat selama menonton:
 
 - kirim `POST /api/v1/devices/me/heartbeat` setiap 60–120 detik, atau
 - kirim `POST /api/v1/progress` setiap ≤20 detik—request ini juga memperbarui
   `last_seen_at`.
 
-Menonton film satu jam tanpa heartbeat/progress dapat membuat perangkat tampil offline
-setelah 5 menit di panel admin, tetapi **playback tidak diblokir**; status offline hanya
-informasi monitoring.
+Menonton film satu jam tanpa heartbeat/progress hanya membuat `last_seen_at` basi;
+**playback tidak diblokir**, dan status aktif perangkat tidak berubah.
 
 ### 9.2 Series
 
@@ -625,8 +661,6 @@ melalui panel `/sync`:
 - HDD transport memakai **exFAT**. Di Linux, mount HDD read-only (misalnya
   `/mnt/vod-export`): aplikasi tidak menjalankan `mount` sebagai root; tombol
   Refresh hanya memindai mount point.
-- Detail format dan task list ada di
-  [`docs/import-export.md`](docs/import-export.md).
 
 ---
 
@@ -823,7 +857,7 @@ go run ./cmd/devseed -db data/app.db -media data/media \
 # daftarkan device
 curl -X POST http://127.0.0.1:8080/api/v1/devices/register \
   -H 'Content-Type: application/json' \
-  -d '{"name":"LoadTest","seat_number":"0"}'
+  -d '{"mac_address":"loadtest-01","seat_number":"0"}'
 
 # jalankan 100 klien (benchmark kapasitas; target operasional 50)
 go run ./cmd/loadtest -base http://127.0.0.1:8080 \

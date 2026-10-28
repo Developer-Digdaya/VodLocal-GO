@@ -73,24 +73,24 @@
       "post": {
         "tags": ["Device"],
         "summary": "Registrasi tablet",
-        "description": "Mendaftarkan tablet dan mengembalikan token Bearer. Token hanya ditampilkan sekali. `mac_address` wajib; MAC yang sudah terdaftar ditolak 409 — hapus perangkat lewat panel admin sebelum register ulang.",
+        "description": "Mendaftarkan tablet dan mengembalikan token Bearer. Token hanya ditampilkan sekali. `mac_address` adalah identitas perangkat: boleh MAC address atau device ID apa pun, dan server tidak memvalidasi format MAC. Bila identitas itu sudah dipakai: dengan `is_reset=false` (default) registrasi ditolak `409` kode `2003` beserta data perangkat lama; dengan `is_reset=true` perangkat ditimpa (`200`, token baru, `id` tetap, riwayat tonton dipertahankan). Catatan: field `name` tidak perlu dikirim klien; bila tetap dikirim nilainya opsional dan hanya disimpan sebagai nama perangkat.",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/DeviceRegisterRequest" },
               "example": {
-                "name": "Tablet Kursi 12",
-                "seat_number": "12",
-                "mac_address": "AA:BB:CC:DD:EE:12",
-                "app_version": "1.0.3"
+                "mac_address": "a1b2c3d4e5f6",
+                "seat_number": "1",
+                "app_version": "1.0.3",
+                "is_reset": false
               }
             }
           }
         },
         "responses": {
           "201": {
-            "description": "Device dibuat",
+            "description": "Device baru dibuat",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/DeviceRegisterResponse" },
@@ -98,28 +98,61 @@
                   "code": 0,
                   "msg": "Berhasil",
                   "data": {
-                    "device": { "id": 12, "name": "Tablet Kursi 12", "seat_number": "12" },
-                    "token": "mc_7f3a9c2e5b1d4a6f8e0c9a1b2c3d4e5f"
+                    "device": {
+                      "id": 12,
+                      "name": "Kursi 1",
+                      "seat_number": "1",
+                      "mac_address": "a1b2c3d4e5f6"
+                    },
+                    "token": "mc_7f3a9c2e5b1d4a6f8e0c9a1b2c3d4e5f",
+                    "reset": false
                   },
                   "errors": []
                 }
               }
             }
           },
-          "409": {
-            "description": "MAC sudah terdaftar",
+          "200": {
+            "description": "Identitas sudah dipakai dan ditimpa karena `is_reset=true`. Token baru diterbitkan, `id` tetap, riwayat tonton dipertahankan.",
             "content": {
               "application/json": {
+                "schema": { "$ref": "#/components/schemas/DeviceRegisterResponse" },
                 "example": {
-                  "code": 2003,
-                  "msg": "Perangkat sudah terdaftar",
-                  "data": null,
+                  "code": 0,
+                  "msg": "Berhasil",
+                  "data": {
+                    "device": {
+                      "id": 12,
+                      "name": "Kursi 1",
+                      "seat_number": "1",
+                      "mac_address": "a1b2c3d4e5f6"
+                    },
+                    "token": "mc_9b1c4d7e2f5a8b3c6d9e0f1a2b3c4d5e",
+                    "reset": true
+                  },
                   "errors": []
                 }
               }
             }
           },
-          "422": { "$ref": "#/components/responses/ValidationError" }
+          "409": { "$ref": "#/components/responses/DeviceAlreadyRegistered" },
+          "422": {
+            "description": "Validasi input gagal",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" },
+                "example": {
+                  "code": 1003,
+                  "msg": "Data yang dikirim tidak valid",
+                  "data": null,
+                  "errors": [
+                    { "field": "body.mac_address", "message": "wajib diisi" },
+                    { "field": "body.seat_number", "message": "wajib diisi, maksimal 20 karakter" }
+                  ]
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -773,6 +806,20 @@
           }
         }
       },
+      "DeviceAlreadyRegistered": {
+        "description": "Identitas perangkat sudah dipakai dan `is_reset=false`. `data` berisi perangkat yang memakai identitas tersebut (bukan `null`), supaya klien bisa menampilkan kursi mana yang bentrok.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/DeviceConflictResponse" },
+            "example": {
+              "code": 2003,
+              "msg": "Perangkat sudah terdaftar",
+              "data": { "device_id": 7, "seat_number": "12", "name": "Kursi 12" },
+              "errors": []
+            }
+          }
+        }
+      },
       "ValidationError": {
         "description": "Validasi input gagal",
         "content": {
@@ -889,27 +936,44 @@
       },
       "DeviceRegisterRequest": {
         "type": "object",
-        "required": ["name", "mac_address"],
+        "required": ["mac_address", "seat_number"],
         "properties": {
-          "name": { "type": "string", "maxLength": 100, "example": "Tablet Kursi 12" },
-          "seat_number": { "type": "string", "maxLength": 20, "example": "12" },
-          "mac_address": { "type": "string", "description": "MAC perangkat; wajib dan unik.", "example": "AA:BB:CC:DD:EE:12" },
-          "app_version": { "type": "string", "maxLength": 20, "example": "1.0.3" }
+          "mac_address": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Identitas perangkat. Boleh MAC address atau device ID apa pun; server tidak memvalidasi format MAC.",
+            "example": "a1b2c3d4e5f6"
+          },
+          "seat_number": { "type": "string", "minLength": 1, "maxLength": 20, "example": "1" },
+          "app_version": { "type": "string", "maxLength": 20, "example": "1.0.3" },
+          "is_reset": {
+            "type": "boolean",
+            "default": false,
+            "description": "true = timpa perangkat yang sudah memakai identitas ini (token baru, id tetap, riwayat tonton dipertahankan). false = tolak bila identitas sudah dipakai.",
+            "example": false
+          }
         }
       },
       "DeviceSummary": {
         "type": "object",
         "properties": {
           "id": { "type": "integer", "format": "int64", "example": 12 },
-          "name": { "type": "string", "example": "Tablet Kursi 12" },
-          "seat_number": { "type": "string", "nullable": true, "example": "12" }
+          "name": { "type": "string", "nullable": true, "example": "Kursi 1" },
+          "seat_number": { "type": "string", "nullable": true, "example": "1" },
+          "mac_address": { "type": "string", "example": "a1b2c3d4e5f6" }
         }
       },
       "DeviceRegisterData": {
         "type": "object",
         "properties": {
           "device": { "$ref": "#/components/schemas/DeviceSummary" },
-          "token": { "type": "string", "example": "mc_7f3a9c2e5b1d4a6f8e0c9a1b2c3d4e5f" }
+          "token": { "type": "string", "example": "mc_7f3a9c2e5b1d4a6f8e0c9a1b2c3d4e5f" },
+          "reset": {
+            "type": "boolean",
+            "description": "true bila perangkat yang sudah memakai identitas ini ditimpa (`is_reset=true`).",
+            "example": false
+          }
         }
       },
       "DeviceRegisterResponse": {
@@ -920,6 +984,30 @@
             "properties": { "data": { "$ref": "#/components/schemas/DeviceRegisterData" } }
           }
         ]
+      },
+      "DeviceConflictData": {
+        "type": "object",
+        "required": ["device_id"],
+        "description": "Perangkat yang sudah memakai identitas tersebut. Envelope error ini membawa `data`, bukan `null`.",
+        "properties": {
+          "device_id": { "type": "integer", "format": "int64", "example": 7 },
+          "seat_number": { "type": "string", "nullable": true, "example": "12" },
+          "name": { "type": "string", "nullable": true, "example": "Kursi 12" }
+        }
+      },
+      "DeviceConflictResponse": {
+        "type": "object",
+        "required": ["code", "msg", "data", "errors"],
+        "properties": {
+          "code": { "type": "integer", "example": 2003 },
+          "msg": { "type": "string", "example": "Perangkat sudah terdaftar" },
+          "data": { "$ref": "#/components/schemas/DeviceConflictData" },
+          "errors": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Detail" },
+            "example": []
+          }
+        }
       },
       "DeviceData": {
         "type": "object",
