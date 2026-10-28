@@ -1,0 +1,821 @@
+{{define "content"}}
+<style>
+/* Halaman /api-docs: penjelajah OpenAPI + panel "Coba".
+   Semua gaya di sini memakai variabel dan palet yang sudah dipakai layout
+   panel supaya tidak perlu aset tambahan (tanpa CDN). */
+.apidocs { --ad-border: #e2e6ea; --ad-ink: var(--pico-primary, #12324f); --ad-muted: #5b6672; }
+.apidocs .apidocs-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; margin: 0 0 .5rem; }
+.apidocs .apidocs-meta button { height: 1.9rem; font-size: .78rem; }
+.apidocs .apidocs-layout { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 1rem; align-items: start; }
+.apidocs .apidocs-nav { min-width: 0; padding: .8rem; }
+.apidocs .apidocs-try { min-width: 0; padding: .9rem 1rem; }
+.apidocs .apidocs-filter { width: 100%; margin: 0 0 .45rem; }
+.apidocs .apidocs-count { margin: 0 0 .5rem; }
+.apidocs .apidocs-groups { display: flex; flex-direction: column; gap: .85rem; max-height: 60vh; overflow-y: auto; overflow-x: hidden; padding-right: .15rem; }
+.apidocs .apidocs-group { min-width: 0; }
+.apidocs .apidocs-group > h3 { font-size: .74rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ad-muted); margin: 0 0 .35rem; }
+.apidocs .apidocs-group ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .2rem; }
+.apidocs .apidocs-group li { margin: 0; padding: 0; min-width: 0; }
+.apidocs button.apidoc-op { display: grid; grid-template-columns: 3.6rem minmax(0, 1fr); gap: .1rem .45rem; width: 100%; height: auto; min-height: 0; margin: 0; padding: .35rem .45rem; border: 1px solid transparent; border-radius: .4rem; background: #fff; color: inherit; font: inherit; line-height: 1.3; text-align: left; justify-content: flex-start; align-items: start; cursor: pointer; }
+.apidocs button.apidoc-op:hover { background: #eef4fa; }
+.apidocs button.apidoc-op[aria-current="true"] { border-color: #1f5c93; background: #eef4fa; }
+.apidocs .apidoc-op .apidoc-method { grid-column: 1; grid-row: 1; min-width: 0; font-size: .68rem; }
+.apidocs .apidoc-op .apidoc-op-path { grid-column: 2; grid-row: 1; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .76rem; overflow-wrap: anywhere; }
+.apidocs .apidoc-op .apidoc-op-summary { grid-column: 2; grid-row: 2; color: var(--ad-muted); font-size: .74rem; overflow-wrap: anywhere; }
+.apidocs .apidoc-method.m-get { background: #e7f6ec; color: #1f6b3a; }
+.apidocs .apidoc-method.m-post { background: #e8f0fb; color: #164c86; }
+.apidocs .apidoc-method.m-put, .apidocs .apidoc-method.m-patch { background: #fff6e5; color: #7a5a12; }
+.apidocs .apidoc-method.m-delete { background: #fdecec; color: #8a1f1a; }
+.apidocs .apidoc-method.m-head, .apidocs .apidoc-method.m-options, .apidocs .apidoc-method.m-trace { background: #eef1f4; color: #35414d; }
+.apidocs .apidocs-try-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding-bottom: .6rem; border-bottom: 1px solid var(--ad-border); margin-bottom: .7rem; }
+.apidocs .apidocs-try-head code { min-width: 0; font-size: .82rem; overflow-wrap: anywhere; }
+.apidocs .apidocs-op-summary { margin: 0 0 .7rem; overflow-wrap: anywhere; }
+.apidocs .apidocs-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .6rem; margin-bottom: .4rem; }
+.apidocs .apidocs-fields:empty { display: none; }
+.apidocs .apidocs-field { min-width: 0; margin: 0 0 .7rem; }
+.apidocs .apidocs-fields .apidocs-field { margin-bottom: 0; }
+.apidocs .apidocs-field > label { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .25rem .4rem; font-size: .82rem; font-weight: 600; margin-bottom: .2rem; overflow-wrap: anywhere; }
+.apidocs .apidocs-field > label > span:last-child { font-weight: 400; }
+.apidocs .apidocs-field input[type=text], .apidocs .apidocs-field input[type=password], .apidocs .apidocs-field textarea { width: 100%; margin: 0; }
+.apidocs .apidocs-field textarea { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .8rem; line-height: 1.45; min-height: 7rem; padding: .45rem .55rem; border: 1px solid #ccd3db; border-radius: .35rem; resize: vertical; }
+.apidocs .apidocs-field textarea:focus { border-color: #1f5c93; }
+.apidocs .apidocs-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .2rem 0 .8rem; }
+.apidocs .apidocs-actions .muted { min-width: 0; overflow-wrap: anywhere; }
+.apidocs .apidocs-result-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: .35rem; }
+.apidocs .apidocs-response { margin: 0; padding: .6rem .7rem; max-height: 44vh; font-size: .78rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; background: #f7f9fb; border: 1px solid var(--ad-border); border-radius: .4rem; }
+.apidocs [hidden] { display: none !important; }
+@media (max-width: 900px) {
+  .apidocs .apidocs-layout { grid-template-columns: 1fr; }
+  .apidocs .apidocs-groups { max-height: none; overflow: visible; }
+  .apidocs .apidocs-response { max-height: none; }
+}
+@media (max-width: 720px) {
+  .apidocs .apidocs-nav, .apidocs .apidocs-try { padding: .7rem; }
+  .apidocs .apidocs-fields { grid-template-columns: 1fr; }
+  .apidocs button.apidoc-op { grid-template-columns: 3.4rem minmax(0, 1fr); }
+}
+</style>
+
+<div class="apidocs" id="apidocs">
+  <h1>Dokumentasi API</h1>
+  <p class="apidocs-meta small muted">
+    <span>Sumber: <code>openapi.json</code> ({{.SpecBytes}}) · JSON mentah di <code>/api-docs/spec.json</code></span>
+    <button type="button" class="secondary" id="apidoc-reload">Muat ulang</button>
+  </p>
+  <p class="small muted" id="apidoc-servers">Memuat spesifikasi…</p>
+
+  <div class="apidocs-layout">
+    <nav class="card apidocs-nav" aria-label="Daftar operasi">
+      <label for="apidoc-filter">Cari operasi</label>
+      <input type="text" id="apidoc-filter" class="apidocs-filter" placeholder="path, method, atau ringkasan" autocomplete="off" spellcheck="false">
+      <p class="small muted apidocs-count" id="apidoc-count">Memuat…</p>
+      <p class="flash error" id="apidoc-list-error" hidden></p>
+      <div class="apidocs-groups" id="apidoc-list">
+        <p class="muted small">Memuat spesifikasi…</p>
+      </div>
+      <p class="muted small" id="apidoc-no-match" hidden>Tidak ada operasi yang cocok dengan pencarian.</p>
+    </nav>
+
+    <section class="card apidocs-try" aria-label="Coba request">
+      <div class="apidocs-try-head">
+        <span class="badge apidoc-method" id="apidoc-method" hidden>GET</span>
+        <code id="apidoc-path">Belum ada operasi dipilih</code>
+      </div>
+
+      <p class="muted small" id="apidoc-empty">Pilih satu operasi pada daftar di sebelah kiri untuk membuka panel percobaan.</p>
+
+      <div id="apidoc-form" hidden>
+        <p class="small muted apidocs-op-summary" id="apidoc-summary"></p>
+
+        <div class="apidocs-fields" id="apidoc-path-fields"></div>
+        <div class="apidocs-fields" id="apidoc-query-fields"></div>
+
+        <div class="apidocs-field">
+          <label for="apidoc-token">
+            <span>Bearer token</span>
+            <span class="muted small" id="apidoc-token-hint"></span>
+          </label>
+          <input type="password" id="apidoc-token" autocomplete="off" spellcheck="false" placeholder="token perangkat">
+        </div>
+
+        <div class="apidocs-field" id="apidoc-body-field" hidden>
+          <label for="apidoc-body">
+            <span>Body JSON</span>
+            <span class="muted small">application/json</span>
+          </label>
+          <textarea id="apidoc-body" rows="9" spellcheck="false" placeholder="{ }"></textarea>
+        </div>
+
+        <div class="apidocs-actions">
+          <button type="button" id="apidoc-send">Kirim</button>
+          <button type="button" class="secondary" id="apidoc-clear-token">Hapus token</button>
+          <span class="small muted" id="apidoc-hint"></span>
+        </div>
+
+        <p class="flash error" id="apidoc-req-error" hidden></p>
+
+        <div id="apidoc-result" hidden>
+          <div class="apidocs-result-head">
+            <span class="badge" id="apidoc-status"></span>
+            <span class="small muted" id="apidoc-duration"></span>
+          </div>
+          <pre class="apidocs-response" id="apidoc-response"></pre>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var SPEC_URL = '/api-docs/spec.json';
+  // Token Bearer disimpan di sessionStorage (bukan cookie, bukan localStorage)
+  // supaya hilang saat tab ditutup dan tidak ikut terkirim otomatis.
+  var TOKEN_KEY = 'vodlocal.apiToken';
+  var METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'];
+  var MAX_BODY_CHARS = 200000;
+
+  var root = document.getElementById('apidocs');
+  if (!root) { return; }
+
+  var listEl = document.getElementById('apidoc-list');
+  var filterEl = document.getElementById('apidoc-filter');
+  var countEl = document.getElementById('apidoc-count');
+  var listErrorEl = document.getElementById('apidoc-list-error');
+  var noMatchEl = document.getElementById('apidoc-no-match');
+  var reloadEl = document.getElementById('apidoc-reload');
+  var serversEl = document.getElementById('apidoc-servers');
+
+  var emptyEl = document.getElementById('apidoc-empty');
+  var formEl = document.getElementById('apidoc-form');
+  var methodEl = document.getElementById('apidoc-method');
+  var pathEl = document.getElementById('apidoc-path');
+  var summaryEl = document.getElementById('apidoc-summary');
+  var pathFieldsEl = document.getElementById('apidoc-path-fields');
+  var queryFieldsEl = document.getElementById('apidoc-query-fields');
+  var tokenEl = document.getElementById('apidoc-token');
+  var tokenHintEl = document.getElementById('apidoc-token-hint');
+  var clearTokenEl = document.getElementById('apidoc-clear-token');
+  var bodyFieldEl = document.getElementById('apidoc-body-field');
+  var bodyEl = document.getElementById('apidoc-body');
+  var sendEl = document.getElementById('apidoc-send');
+  var hintEl = document.getElementById('apidoc-hint');
+  var resultEl = document.getElementById('apidoc-result');
+  var statusEl = document.getElementById('apidoc-status');
+  var durationEl = document.getElementById('apidoc-duration');
+  var responseEl = document.getElementById('apidoc-response');
+  var reqErrorEl = document.getElementById('apidoc-req-error');
+
+  // spec adalah dokumen OpenAPI yang sedang tampil; nodes menyimpan pasangan
+  // operasi + elemen DOM-nya agar pencarian cukup menyembunyikan baris.
+  var spec = null;
+  var ops = [];
+  var nodes = [];
+  var selected = null;
+  // paramValues memetakan "in:nama" -> nilai input yang sedang diisi.
+  var paramValues = {};
+
+  function clearChildren(el) {
+    while (el.firstChild) { el.removeChild(el.firstChild); }
+  }
+
+  function textEl(tag, className, text) {
+    var el = document.createElement(tag);
+    if (className) { el.className = className; }
+    if (text !== undefined && text !== null) { el.textContent = text; }
+    return el;
+  }
+
+  // pointer membaca JSON Pointer lokal (#/a/b/c) dari dokumen spesifikasi.
+  function pointer(ref) {
+    if (typeof ref !== 'string' || ref.charAt(0) !== '#') { return null; }
+    var rest = ref.slice(1);
+    if (rest === '') { return spec; }
+    var parts = rest.split('/');
+    var node = spec;
+    for (var i = 1; i < parts.length; i++) {
+      var key = parts[i].replace(/~1/g, '/').replace(/~0/g, '~');
+      try { key = decodeURIComponent(key); } catch (e) { /* biarkan apa adanya */ }
+      if (node === null || typeof node !== 'object') { return null; }
+      node = node[key];
+    }
+    return node;
+  }
+
+  // deref mengikuti rantai $ref lokal. Ref jarak jauh sengaja tidak diambil
+  // supaya halaman tidak pernah memuat dokumen dari host lain.
+  function deref(node) {
+    var depth = 0;
+    while (node && typeof node === 'object' && typeof node.$ref === 'string' && depth < 20) {
+      var target = pointer(node.$ref);
+      if (!target || typeof target !== 'object') { return {}; }
+      node = target;
+      depth++;
+    }
+    return node;
+  }
+
+  // buildExample menyusun contoh body dari schema bila tidak ada contoh siap
+  // pakai pada media type.
+  function buildExample(schema, depth) {
+    schema = deref(schema);
+    depth = depth || 0;
+    if (!schema || typeof schema !== 'object' || depth > 6) { return undefined; }
+    if (schema.example !== undefined) { return schema.example; }
+    if (schema.properties && typeof schema.properties === 'object') {
+      var obj = {};
+      Object.keys(schema.properties).forEach(function (key) {
+        var value = buildExample(schema.properties[key], depth + 1);
+        if (value !== undefined) { obj[key] = value; }
+      });
+      return obj;
+    }
+    if (schema.type === 'array' || schema.items) {
+      var item = buildExample(schema.items, depth + 1);
+      return item === undefined ? [] : [item];
+    }
+    if (schema.type === 'object') { return {}; }
+    if (schema.type === 'string') {
+      if (schema.enum && schema.enum.length) { return schema.enum[0]; }
+      return schema.default !== undefined ? schema.default : '';
+    }
+    if (schema.type === 'integer' || schema.type === 'number') {
+      if (schema.example !== undefined) { return schema.example; }
+      return schema.default !== undefined ? schema.default : 0;
+    }
+    if (schema.type === 'boolean') {
+      return schema.default !== undefined ? schema.default : false;
+    }
+    return undefined;
+  }
+
+  // exampleOf mengambil nilai awal sebuah parameter: example, lalu
+  // schema.example / schema.default / enum pertama.
+  function exampleOf(param) {
+    if (!param || typeof param !== 'object') { return ''; }
+    if (param.example !== undefined && param.example !== null) { return String(param.example); }
+    var schema = deref(param.schema);
+    if (schema && typeof schema === 'object') {
+      if (schema.example !== undefined && schema.example !== null) { return String(schema.example); }
+      if (schema.default !== undefined && schema.default !== null) { return String(schema.default); }
+      if (schema.enum && schema.enum.length) { return String(schema.enum[0]); }
+    }
+    return '';
+  }
+
+  // pathVars membaca nama variabel pada templat path ("/a/{id}").
+  function pathVars(path) {
+    var names = [];
+    var re = /\{([^{}]+)\}/g;
+    var match;
+    while ((match = re.exec(String(path))) !== null) { names.push(match[1]); }
+    return names;
+  }
+
+  // mergeParams menggabungkan parameter tingkat path dan operasi, membuang
+  // duplikat, lalu melengkapi parameter path yang tidak dideklarasikan.
+  function mergeParams(pathItem, op, path) {
+    var out = [];
+    var seen = {};
+
+    function add(raw) {
+      var param = deref(raw);
+      if (!param || typeof param !== 'object' || !param.name || !param.in) { return; }
+      var key = param.in + ':' + param.name;
+      if (seen[key]) { return; }
+      seen[key] = true;
+      out.push({
+        name: String(param.name),
+        in: String(param.in),
+        required: param.required === true,
+        description: param.description || '',
+        example: exampleOf(param),
+        allowReserved: param.allowReserved === true
+      });
+    }
+
+    (pathItem.parameters || []).forEach(add);
+    (op.parameters || []).forEach(add);
+    pathVars(path).forEach(function (name) {
+      var key = 'path:' + name;
+      if (seen[key]) { return; }
+      seen[key] = true;
+      out.push({ name: name, in: 'path', required: true, description: '', example: '', allowReserved: false });
+    });
+    return out;
+  }
+
+  // requestBodyInfo menyiapkan isi awal textarea body JSON.
+  function requestBodyInfo(op) {
+    var body = deref(op.requestBody);
+    if (!body || typeof body !== 'object') { return { available: false, text: '' }; }
+    var content = body.content;
+    if (!content || typeof content !== 'object') { return { available: true, text: '' }; }
+    var media = content['application/json'] || content[Object.keys(content)[0]];
+    if (!media || typeof media !== 'object') { return { available: true, text: '' }; }
+
+    var example;
+    if (media.example !== undefined) {
+      example = media.example;
+    } else if (media.examples && typeof media.examples === 'object') {
+      var firstKey = Object.keys(media.examples)[0];
+      if (firstKey) {
+        var named = deref(media.examples[firstKey]);
+        if (named && named.value !== undefined) { example = named.value; }
+      }
+    }
+    if (example === undefined) { example = buildExample(media.schema, 0); }
+    if (example === undefined) { return { available: true, text: '' }; }
+
+    var text = '';
+    try { text = JSON.stringify(example, null, 2); } catch (e) { text = ''; }
+    return { available: true, text: text };
+  }
+
+  // hasSecurity melaporkan apakah operasi memakai security (operasi menimpa
+  // security global sesuai spesifikasi OpenAPI).
+  function hasSecurity(op) {
+    if (Array.isArray(op.security)) { return op.security.length > 0; }
+    return !!(spec && Array.isArray(spec.security) && spec.security.length > 0);
+  }
+
+  // prefixGroup adalah pengelompokan cadangan saat operasi tidak punya tag.
+  function prefixGroup(path) {
+    var parts = String(path).split('/').filter(function (part) { return part !== ''; });
+    if (!parts.length) { return 'Lainnya'; }
+    if (parts[0] === 'api' && parts.length > 1) { return '/api/' + parts[1]; }
+    return '/' + parts[0];
+  }
+
+  function makeOp(path, method, raw, pathItem) {
+    var op = deref(raw);
+    return {
+      id: method + ' ' + path,
+      method: method,
+      path: path,
+      summary: op.summary || '',
+      description: op.description || '',
+      tag: (Array.isArray(op.tags) && op.tags.length) ? String(op.tags[0]) : prefixGroup(path),
+      params: mergeParams(pathItem, op, path),
+      body: requestBodyInfo(op),
+      secured: hasSecurity(op)
+    };
+  }
+
+  // collectOps mengumpulkan seluruh operasi lalu mengelompokkannya per tag.
+  function collectOps(paths) {
+    var list = [];
+    Object.keys(paths).forEach(function (path) {
+      var pathItem = deref(paths[path]);
+      if (!pathItem || typeof pathItem !== 'object') { return; }
+      METHODS.forEach(function (method) {
+        var raw = pathItem[method];
+        if (!raw || typeof raw !== 'object') { return; }
+        list.push(makeOp(path, method, raw, pathItem));
+      });
+    });
+    return list;
+  }
+
+  function groupOps(list) {
+    var tagInfo = {};
+    var order = [];
+    (spec && Array.isArray(spec.tags) ? spec.tags : []).forEach(function (tag) {
+      if (!tag || !tag.name) { return; }
+      order.push(String(tag.name));
+      tagInfo[String(tag.name)] = { rank: order.length, description: tag.description || '' };
+    });
+
+    var map = {};
+    var groups = [];
+    list.forEach(function (op) {
+      if (!map[op.tag]) {
+        map[op.tag] = {
+          title: op.tag,
+          description: tagInfo[op.tag] ? tagInfo[op.tag].description : 'Dikelompokkan menurut prefix path.',
+          rank: tagInfo[op.tag] ? tagInfo[op.tag].rank : 1000,
+          ops: []
+        };
+        groups.push(map[op.tag]);
+      }
+      map[op.tag].ops.push(op);
+    });
+
+    groups.sort(function (a, b) {
+      if (a.rank !== b.rank) { return a.rank - b.rank; }
+      return a.title < b.title ? -1 : (a.title > b.title ? 1 : 0);
+    });
+    return groups;
+  }
+
+  function renderList() {
+    clearChildren(listEl);
+    nodes = [];
+    noMatchEl.hidden = true;
+
+    var groups = groupOps(ops);
+    groups.forEach(function (group) {
+      var section = document.createElement('section');
+      section.className = 'apidocs-group';
+      var heading = textEl('h3', null, group.title);
+      if (group.description) { heading.title = group.description; }
+      section.appendChild(heading);
+
+      var ul = document.createElement('ul');
+      group.ops.forEach(function (op) {
+        var li = document.createElement('li');
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'apidoc-op';
+        button.setAttribute('aria-current', 'false');
+        button.appendChild(textEl('span', 'badge apidoc-method m-' + op.method, op.method.toUpperCase()));
+        button.appendChild(textEl('span', 'apidoc-op-path', op.path));
+        button.appendChild(textEl('span', 'apidoc-op-summary', op.summary || '(tanpa ringkasan)'));
+        button.addEventListener('click', function () { selectOp(op); });
+        li.appendChild(button);
+        ul.appendChild(li);
+        nodes.push({ op: op, button: button, li: li, section: section });
+      });
+      section.appendChild(ul);
+      listEl.appendChild(section);
+    });
+
+    countEl.textContent = ops.length + ' operasi · ' + groups.length + ' grup';
+    applyFilter();
+  }
+
+  function applyFilter() {
+    var query = (filterEl.value || '').trim().toLowerCase();
+    var visible = 0;
+    var sectionVisible = new Map();
+
+    nodes.forEach(function (node) {
+      var haystack = (node.op.method + ' ' + node.op.path + ' ' + node.op.summary).toLowerCase();
+      var show = !query || haystack.indexOf(query) >= 0;
+      node.li.hidden = !show;
+      if (show) {
+        sectionVisible.set(node.section, true);
+        visible++;
+      }
+    });
+    nodes.forEach(function (node) {
+      node.section.hidden = !sectionVisible.get(node.section);
+    });
+
+    noMatchEl.hidden = !(nodes.length && visible === 0);
+  }
+
+  function showListMessage(text) {
+    clearChildren(listEl);
+    listEl.appendChild(textEl('p', 'muted small', text));
+  }
+
+  function showListError(text) {
+    listErrorEl.textContent = text;
+    listErrorEl.hidden = false;
+  }
+
+  function clearListError() {
+    listErrorEl.textContent = '';
+    listErrorEl.hidden = true;
+  }
+
+  function renderServersMeta() {
+    var servers = (spec && Array.isArray(spec.servers) ? spec.servers : []).filter(function (server) {
+      return server && server.url;
+    });
+    var origin = window.location.origin;
+    if (!servers.length) {
+      serversEl.textContent = 'Spesifikasi tidak mencantumkan servers. Request dijalankan ke origin panel: ' + origin + '.';
+      return;
+    }
+    serversEl.textContent = 'Servers pada spesifikasi: ' +
+      servers.map(function (server) { return server.url; }).join(', ') +
+      '. Request tetap dijalankan ke origin panel: ' + origin + '.';
+  }
+
+  function showEmptyPanel(text) {
+    selected = null;
+    paramValues = {};
+    clearChildren(pathFieldsEl);
+    clearChildren(queryFieldsEl);
+    emptyEl.textContent = text;
+    emptyEl.hidden = false;
+    formEl.hidden = true;
+    methodEl.hidden = true;
+    pathEl.textContent = 'Belum ada operasi dipilih';
+  }
+
+  function paramKey(param) { return param.in + ':' + param.name; }
+
+  function buildField(container, param) {
+    var key = paramKey(param);
+    var id = 'apidoc-param-' + key.replace(/[^A-Za-z0-9_-]/g, '-');
+    var wrap = document.createElement('div');
+    wrap.className = 'apidocs-field';
+
+    var label = document.createElement('label');
+    label.setAttribute('for', id);
+    label.appendChild(textEl('span', null, param.name));
+    label.appendChild(textEl('span', 'muted small', param.required ? param.in + ' · wajib' : param.in));
+    wrap.appendChild(label);
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.id = id;
+    input.value = param.example || '';
+    input.placeholder = param.example || (param.description ? param.description : '');
+    input.spellcheck = false;
+    input.autocomplete = 'off';
+    if (param.description) { input.title = param.description; }
+    input.addEventListener('input', function () { paramValues[key] = input.value; });
+    wrap.appendChild(input);
+
+    paramValues[key] = input.value;
+    container.appendChild(wrap);
+  }
+
+  function selectOp(op) {
+    selected = op;
+    paramValues = {};
+
+    nodes.forEach(function (node) {
+      node.button.setAttribute('aria-current', node.op === op ? 'true' : 'false');
+    });
+
+    clearListError();
+    clearRequestError();
+    clearResult();
+
+    emptyEl.hidden = true;
+    formEl.hidden = false;
+
+    methodEl.className = 'badge apidoc-method m-' + op.method;
+    methodEl.textContent = op.method.toUpperCase();
+    methodEl.hidden = false;
+    pathEl.textContent = op.path;
+    summaryEl.textContent = op.summary || '';
+    summaryEl.hidden = !op.summary;
+
+    clearChildren(pathFieldsEl);
+    clearChildren(queryFieldsEl);
+    op.params.forEach(function (param) {
+      if (param.in === 'path') { buildField(pathFieldsEl, param); }
+      if (param.in === 'query') { buildField(queryFieldsEl, param); }
+    });
+    // Field query juga mencakup parameter in:query yang deklarasinya belum ada.
+    if (!queryFieldsEl.childElementCount) { queryFieldsEl.hidden = true; } else { queryFieldsEl.hidden = false; }
+    if (!pathFieldsEl.childElementCount) { pathFieldsEl.hidden = true; } else { pathFieldsEl.hidden = false; }
+
+    bodyFieldEl.hidden = !op.body.available;
+    bodyEl.value = op.body.available ? op.body.text : '';
+
+    if (op.secured) {
+      tokenHintEl.textContent = '· dipakai operasi ini';
+    } else {
+      tokenHintEl.textContent = '· operasi ini tidak memakai token';
+    }
+
+    hintEl.textContent = op.method.toUpperCase() + ' ' + window.location.origin + op.path;
+  }
+
+  function showRequestError(text) {
+    reqErrorEl.textContent = text;
+    reqErrorEl.hidden = false;
+  }
+
+  function clearRequestError() {
+    reqErrorEl.textContent = '';
+    reqErrorEl.hidden = true;
+  }
+
+  function clearResult() {
+    resultEl.hidden = true;
+    statusEl.className = 'badge';
+    statusEl.textContent = '';
+    durationEl.textContent = '';
+    responseEl.textContent = '';
+  }
+
+  // buildTarget hanya mengizinkan path absolut pada origin panel sendiri.
+  function buildTarget(path, query) {
+    if (typeof path !== 'string' || path.charAt(0) !== '/') {
+      throw new Error('Path pada spesifikasi tidak valid.');
+    }
+    if (path.charAt(1) === '/' || path.charAt(1) === '\\') {
+      throw new Error('Path pada spesifikasi menunjuk host lain; request dibatalkan.');
+    }
+    var search = query.length ? '?' + query.join('&') : '';
+    var parsed = new URL(window.location.origin + path + search);
+    if (parsed.origin !== window.location.origin) {
+      throw new Error('Hanya request ke origin yang sama (' + window.location.origin + ') yang diizinkan.');
+    }
+    return parsed.toString();
+  }
+
+  function formatBody(text) {
+    if (text === null || text === undefined) { return '(body kosong)'; }
+    var trimmed = String(text).trim();
+    if (!trimmed) { return '(body kosong)'; }
+    var out = trimmed;
+    try { out = JSON.stringify(JSON.parse(trimmed), null, 2); } catch (e) { out = String(text); }
+    if (out.length > MAX_BODY_CHARS) {
+      out = out.slice(0, MAX_BODY_CHARS) + '\n… (dipotong, ' + out.length + ' karakter)';
+    }
+    return out;
+  }
+
+  function showResult(response, text, elapsed) {
+    var ok = response.ok;
+    statusEl.className = 'badge ' + (ok ? 'done' : 'failed');
+    statusEl.textContent = response.status + ' ' + (response.statusText || (ok ? 'OK' : 'Error'));
+    var contentType = response.headers.get('content-type') || 'tanpa content-type';
+    durationEl.textContent = Math.round(elapsed) + ' ms · ' + contentType;
+    responseEl.textContent = formatBody(text);
+    resultEl.hidden = false;
+  }
+
+  function send() {
+    if (!selected) { return; }
+    var op = selected;
+
+    clearRequestError();
+    clearResult();
+
+    var path = op.path;
+    var missing = [];
+    op.params.forEach(function (param) {
+      if (param.in !== 'path') { return; }
+      var raw = (paramValues[paramKey(param)] || '').trim();
+      if (!raw) {
+        if (param.required) { missing.push(param.name); }
+        return;
+      }
+      var value = param.allowReserved ? raw : encodeURIComponent(raw);
+      path = path.split('{' + param.name + '}').join(value);
+    });
+    if (missing.length) {
+      showRequestError('Lengkapi path parameter: ' + missing.join(', ') + '.');
+      return;
+    }
+    var leftover = /\{[^{}]+\}/.exec(path);
+    if (leftover) {
+      showRequestError('Path parameter ' + leftover[0] + ' belum diisi.');
+      return;
+    }
+
+    var query = [];
+    op.params.forEach(function (param) {
+      if (param.in !== 'query') { return; }
+      var raw = (paramValues[paramKey(param)] || '').trim();
+      if (!raw) { return; }
+      query.push(encodeURIComponent(param.name) + '=' + encodeURIComponent(raw));
+    });
+
+    var target;
+    try {
+      target = buildTarget(path, query);
+    } catch (err) {
+      showRequestError(err && err.message ? err.message : String(err));
+      return;
+    }
+
+    var method = op.method.toUpperCase();
+    var bodyless = method === 'GET' || method === 'HEAD';
+    var bodyText = (op.body.available && !bodyless) ? bodyEl.value : '';
+    var token = (tokenEl.value || '').trim();
+
+    var headers = { 'Accept': 'application/json' };
+    if (bodyText) { headers['Content-Type'] = 'application/json'; }
+    if (token && op.secured) { headers['Authorization'] = 'Bearer ' + token; }
+
+    var init = { method: method, headers: headers, credentials: 'same-origin', cache: 'no-store' };
+    if (bodyText) { init.body = bodyText; }
+
+    hintEl.textContent = method + ' ' + target + (op.secured && token ? ' · dengan Bearer token' : '');
+    sendEl.disabled = true;
+
+    var now = function () {
+      return (window.performance && window.performance.now) ? window.performance.now() : Date.now();
+    };
+    var started = now();
+
+    window.fetch(target, init).then(function (response) {
+      return response.text().then(function (text) {
+        return { response: response, text: text };
+      }, function () {
+        return { response: response, text: '' };
+      });
+    }).then(function (result) {
+      showResult(result.response, result.text, now() - started);
+    }).catch(function (err) {
+      showRequestError('Request gagal: ' + (err && err.message ? err.message : String(err)));
+    }).then(function () {
+      sendEl.disabled = false;
+    });
+  }
+
+  function persistToken() {
+    try {
+      var value = tokenEl.value || '';
+      if (value) {
+        window.sessionStorage.setItem(TOKEN_KEY, value);
+      } else {
+        window.sessionStorage.removeItem(TOKEN_KEY);
+      }
+    } catch (e) { /* sessionStorage bisa diblokir; abaikan */ }
+  }
+
+  function restoreToken() {
+    try {
+      var value = window.sessionStorage.getItem(TOKEN_KEY);
+      if (value) { tokenEl.value = value; }
+    } catch (e) { /* abaikan */ }
+  }
+
+  function renderSpec() {
+    clearListError();
+    selected = null;
+    ops = [];
+    nodes = [];
+
+    if (!spec || typeof spec !== 'object') {
+      showListError('Gagal membaca spesifikasi OpenAPI.');
+      showListMessage('Spesifikasi tidak dapat dibaca.');
+      showEmptyPanel('Spesifikasi tidak dapat dibaca.');
+      countEl.textContent = '0 operasi';
+      return;
+    }
+
+    renderServersMeta();
+
+    var paths = (spec.paths && typeof spec.paths === 'object') ? spec.paths : {};
+    if (!Object.keys(paths).length) {
+      ops = [];
+      showListMessage('Spesifikasi tidak memuat path apa pun.');
+      showEmptyPanel('Tidak ada operasi yang bisa dicoba pada spesifikasi ini.');
+      countEl.textContent = '0 operasi';
+      return;
+    }
+
+    ops = collectOps(paths);
+    if (!ops.length) {
+      showListMessage('Spesifikasi tidak memuat operasi HTTP yang bisa dicoba.');
+      showEmptyPanel('Tidak ada operasi yang bisa dicoba pada spesifikasi ini.');
+      countEl.textContent = '0 operasi';
+      return;
+    }
+
+    renderList();
+    showEmptyPanel('Pilih satu operasi pada daftar di sebelah kiri untuk membuka panel percobaan.');
+  }
+
+  function loadSpec() {
+    clearListError();
+    showListMessage('Memuat spesifikasi…');
+    countEl.textContent = 'Memuat…';
+    serversEl.textContent = 'Memuat spesifikasi…';
+    showEmptyPanel('Memuat spesifikasi…');
+
+    window.fetch(SPEC_URL, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      credentials: 'same-origin',
+      cache: 'no-store'
+    }).then(function (response) {
+      if (!response.ok) {
+        throw new Error('HTTP ' + response.status + ' ' + (response.statusText || ''));
+      }
+      return response.json();
+    }).then(function (loaded) {
+      spec = loaded;
+      renderSpec();
+    }).catch(function (err) {
+      spec = null;
+      ops = [];
+      nodes = [];
+      clearChildren(listEl);
+      countEl.textContent = '0 operasi';
+      serversEl.textContent = 'Spesifikasi tidak termuat.';
+      showListError('Gagal memuat spesifikasi OpenAPI dari ' + SPEC_URL + ' (' +
+        (err && err.message ? err.message : String(err)) + '). Tekan "Muat ulang" untuk mencoba lagi.');
+      showEmptyPanel('Spesifikasi tidak termuat, panel percobaan dinonaktifkan.');
+    });
+  }
+
+  reloadEl.addEventListener('click', loadSpec);
+  filterEl.addEventListener('input', applyFilter);
+  tokenEl.addEventListener('input', persistToken);
+  clearTokenEl.addEventListener('click', function () {
+    tokenEl.value = '';
+    persistToken();
+  });
+  sendEl.addEventListener('click', send);
+
+  restoreToken();
+  loadSpec();
+}());
+</script>
+{{end}}

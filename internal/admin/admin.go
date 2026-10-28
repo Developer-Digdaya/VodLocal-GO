@@ -276,6 +276,11 @@ func (a *Admin) Mount(r chi.Router) {
 
 		pr.Get("/settings", a.handleSettingsForm)
 		pr.With(csrf).Post("/settings", a.handleSettingsSave)
+
+		// Dokumentasi API: halaman penjelajah OpenAPI dan JSON mentahnya.
+		// Keduanya hanya untuk admin karena hanya berguna saat mendebug.
+		pr.Get("/api-docs", a.handleAPIDocs)
+		pr.Get("/api-docs/spec.json", a.handleAPIDocsSpec)
 	})
 }
 
@@ -688,6 +693,7 @@ var pageTemplates = []string{
 	"devices",
 	"storage",
 	"settings",
+	"apidocs",
 }
 
 // sharedTemplates ikut diparse pada setiap halaman agar layout bisa memanggil
