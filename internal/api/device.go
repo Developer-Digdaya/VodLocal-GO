@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -27,13 +26,11 @@ const (
 	tokenRandomBytes = 32
 
 	// Batas panjang field registrasi (§6.1).
+	macAddressMax = 128
 	deviceNameMax = 100
 	seatNumberMax = 20
 	appVersionMax = 20
 )
-
-// macPattern menerima MAC yang sudah dinormalkan ke bentuk AA:BB:CC:DD:EE:FF.
-var macPattern = regexp.MustCompile(`^[0-9A-F]{2}(?::[0-9A-F]{2}){5}$`)
 
 // Authenticator memverifikasi bearer token device. Nilainya memenuhi
 // httpserver.DeviceAuthenticator.
@@ -75,7 +72,7 @@ func (a *Authenticator) Authenticate(ctx context.Context, token string) (httpser
 		active int
 	)
 	err := a.db.QueryRowContext(ctx,
-		`SELECT id, name, COALESCE(seat_number, ''), is_active FROM devices WHERE token_hash = ?`,
+		`SELECT id, COALESCE(name, ''), COALESCE(seat_number, ''), is_active FROM devices WHERE token_hash = ?`,
 		hashDeviceToken(token),
 	).Scan(&device.ID, &device.Name, &device.SeatNumber, &active)
 	switch {
@@ -102,24 +99,49 @@ func (a *Authenticator) Authenticate(ctx context.Context, token string) (httpser
 }
 
 // registerRequest adalah body POST /devices/register.
+//
+// mac_address bukan hanya MAC: klien boleh mengirim device ID apa pun (mis.
+// "android-a1b2-c3d4"), jadi nilainya tidak divalidasi formatnya dan tidak
+// dinormalkan.
 type registerRequest struct {
-	Name       string `json:"name"`
-	SeatNumber string `json:"seat_number"`
 	MACAddress string `json:"mac_address"`
+	SeatNumber string `json:"seat_number"`
+	Name       string `json:"name"`
 	AppVersion string `json:"app_version"`
+	IsReset    bool   `json:"is_reset"`
 }
 
 // deviceSummary adalah bentuk device pada response registrasi (§6.1).
 type deviceSummary struct {
 	ID         int64  `json:"id"`
-	Name       string `json:"name"`
+	Name       any    `json:"name"`
 	SeatNumber any    `json:"seat_number"`
+	MACAddress string `json:"mac_address"`
 }
 
-// registerResponse adalah data sukses registrasi.
+// registerResponse adalah data sukses registrasi. Reset bernilai true bila
+// baris perangkat yang sudah ada ditimpa (is_reset).
 type registerResponse struct {
 	Device deviceSummary `json:"device"`
 	Token  string        `json:"token"`
+	Reset  bool          `json:"reset"`
+}
+
+// registeredDevice adalah data pada 409/2003: perangkat yang sudah memakai
+// identitas yang diminta klien, supaya klien bisa menampilkan kursi mana yang
+// bentrok.
+type registeredDevice struct {
+	DeviceID   int64 `json:"device_id"`
+	SeatNumber any   `json:"seat_number"`
+	Name       any   `json:"name"`
+}
+
+// storedDevice adalah identitas minimal baris devices yang sudah ada.
+type storedDevice struct {
+	ID         int64
+	Name       string
+	SeatNumber string
+	MACAddress string
 }
 
 // deviceDetail adalah bentuk GET /devices/me (§6.2).
@@ -134,51 +156,63 @@ type deviceDetail struct {
 
 // handleDeviceRegister melayani POST /devices/register (publik).
 //
-// mac_address wajib karena menjadi identitas perangkat. MAC yang sudah terdaftar
-// ditolak: untuk tablet yang local storage-nya dihapus, admin harus menghapus
-// perangkat di panel /devices terlebih dahulu, lalu tablet register ulang.
+// Identitas perangkat (mac_address) boleh berupa MAC maupun device ID bebas;
+// nilainya hanya di-trim, tidak divalidasi format dan tidak dinormalkan.
+// Pencarian duplikat dilakukan case-insensitive.
+//
+// Perilaku:
+//   - identitas sudah terdaftar dan is_reset=false → 409/2003 beserta data
+//     kursi yang memakai identitas itu;
+//   - identitas sudah terdaftar dan is_reset=true → baris yang sama ditimpa
+//     (id tetap supaya playback_progress tidak hilang) dan dibalas 200;
+//   - identitas baru → INSERT dan dibalas 201.
 func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
 
-	name := strings.TrimSpace(req.Name)
+	mac := strings.TrimSpace(req.MACAddress)
 	seatNumber := strings.TrimSpace(req.SeatNumber)
+	name := strings.TrimSpace(req.Name)
 	appVersion := strings.TrimSpace(req.AppVersion)
-	mac := normalizeMAC(req.MACAddress)
 
 	fields := map[string]string{}
 	switch {
-	case name == "":
-		fields["body.name"] = "wajib diisi"
-	case utf8.RuneCountInString(name) > deviceNameMax:
-		fields["body.name"] = "maksimal 100 karakter"
+	case mac == "":
+		fields["body.mac_address"] = "wajib diisi"
+	case utf8.RuneCountInString(mac) > macAddressMax:
+		fields["body.mac_address"] = "maksimal 128 karakter"
 	}
-	if utf8.RuneCountInString(seatNumber) > seatNumberMax {
+	switch {
+	case seatNumber == "":
+		fields["body.seat_number"] = "wajib diisi"
+	case utf8.RuneCountInString(seatNumber) > seatNumberMax:
 		fields["body.seat_number"] = "maksimal 20 karakter"
+	}
+	if utf8.RuneCountInString(name) > deviceNameMax {
+		fields["body.name"] = "maksimal 100 karakter"
 	}
 	if utf8.RuneCountInString(appVersion) > appVersionMax {
 		fields["body.app_version"] = "maksimal 20 karakter"
-	}
-	if mac == "" {
-		fields["body.mac_address"] = "wajib diisi"
-	} else if !macPattern.MatchString(mac) {
-		fields["body.mac_address"] = "format MAC tidak valid"
 	}
 	if s.validationFailed(w, fields) {
 		return
 	}
 
 	ctx := r.Context()
-	var exists int
-	err := s.write.QueryRowContext(ctx, `SELECT 1 FROM devices WHERE mac_address = ?`, mac).Scan(&exists)
-	switch {
-	case err == nil:
-		response.Error(w, response.CodeDeviceAlreadyRegistered, nil)
-		return
-	case !errors.Is(err, sql.ErrNoRows):
+	existing, found, err := s.findDeviceByIdentity(ctx, mac)
+	if err != nil {
 		s.internalError(w, r, err)
+		return
+	}
+
+	if found && !req.IsReset {
+		response.ErrorData(w, response.CodeDeviceAlreadyRegistered, registeredDevice{
+			DeviceID:   existing.ID,
+			SeatNumber: nullText(existing.SeatNumber),
+			Name:       nullText(existing.Name),
+		}, nil)
 		return
 	}
 
@@ -189,15 +223,55 @@ func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := s.timestamp()
+
+	// Identitas sudah ada dan klien minta reset: timpa baris yang sama tanpa
+	// mengubah id, sehingga playback_progress perangkat tetap tersimpan.
+	if found {
+		if _, err := s.write.ExecContext(ctx,
+			`UPDATE devices
+			    SET name = ?, seat_number = ?, token_hash = ?, is_active = 1, last_seen_at = ?
+			  WHERE id = ?`,
+			nullIfBlank(name), nullIfBlank(seatNumber), hashDeviceToken(token), now, existing.ID,
+		); err != nil {
+			s.internalError(w, r, err)
+			return
+		}
+
+		response.Success(w, registerResponse{
+			Device: deviceSummary{
+				ID:         existing.ID,
+				Name:       nullText(name),
+				SeatNumber: nullText(seatNumber),
+				MACAddress: existing.MACAddress,
+			},
+			Token: token,
+			Reset: true,
+		})
+		return
+	}
+
 	res, err := s.write.ExecContext(ctx,
 		`INSERT INTO devices (name, seat_number, mac_address, token_hash, is_active, last_seen_at, created_at)
 		 VALUES (?, ?, ?, ?, 1, ?, ?)`,
-		name, nullIfBlank(seatNumber), mac, hashDeviceToken(token), now, now,
+		nullIfBlank(name), nullIfBlank(seatNumber), mac, hashDeviceToken(token), now, now,
 	)
 	if err != nil {
+		// Race: baris lain menyisipkan identitas yang sama di antara SELECT dan
+		// INSERT. Baca ulang lalu balas 409 dengan data kursinya, bukan 500.
 		if isUniqueViolation(err, "mac_address") {
-			response.Error(w, response.CodeDeviceAlreadyRegistered, nil)
-			return
+			existing, found, lerr := s.findDeviceByIdentity(ctx, mac)
+			if lerr != nil {
+				s.internalError(w, r, lerr)
+				return
+			}
+			if found {
+				response.ErrorData(w, response.CodeDeviceAlreadyRegistered, registeredDevice{
+					DeviceID:   existing.ID,
+					SeatNumber: nullText(existing.SeatNumber),
+					Name:       nullText(existing.Name),
+				}, nil)
+				return
+			}
 		}
 		s.internalError(w, r, err)
 		return
@@ -210,9 +284,35 @@ func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.Created(w, registerResponse{
-		Device: deviceSummary{ID: id, Name: name, SeatNumber: nullText(seatNumber)},
-		Token:  token,
+		Device: deviceSummary{
+			ID:         id,
+			Name:       nullText(name),
+			SeatNumber: nullText(seatNumber),
+			MACAddress: mac,
+		},
+		Token: token,
+		Reset: false,
 	})
+}
+
+// findDeviceByIdentity mencari device dengan identitas yang sama secara
+// case-insensitive. Nilai balik kedua false berarti belum ada.
+func (s *server) findDeviceByIdentity(ctx context.Context, mac string) (storedDevice, bool, error) {
+	var device storedDevice
+	err := s.write.QueryRowContext(ctx,
+		`SELECT id, COALESCE(name, ''), COALESCE(seat_number, ''), COALESCE(mac_address, '')
+		   FROM devices
+		  WHERE mac_address = ? COLLATE NOCASE`,
+		mac,
+	).Scan(&device.ID, &device.Name, &device.SeatNumber, &device.MACAddress)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return storedDevice{}, false, nil
+	case err != nil:
+		return storedDevice{}, false, fmt.Errorf("api: mencari device: %w", err)
+	}
+
+	return device, true, nil
 }
 
 // handleDeviceMe melayani GET /devices/me.
@@ -231,7 +331,7 @@ func (s *server) handleDeviceMe(w http.ResponseWriter, r *http.Request) {
 		createdAt  sql.NullString
 	)
 	err := s.read.QueryRowContext(r.Context(),
-		`SELECT name, seat_number, is_active, last_seen_at, created_at FROM devices WHERE id = ?`,
+		`SELECT COALESCE(name, ''), seat_number, is_active, last_seen_at, created_at FROM devices WHERE id = ?`,
 		device.ID,
 	).Scan(&name, &seatNumber, &active, &lastSeen, &createdAt)
 	switch {
@@ -279,25 +379,6 @@ func newDeviceToken() (string, error) {
 		return "", fmt.Errorf("api: membuat token device: %w", err)
 	}
 	return tokenPrefix + base64.RawURLEncoding.EncodeToString(buf), nil
-}
-
-// normalizeMAC menormalkan MAC ke huruf besar dengan pemisah ":" dan menerima
-// pemisah "-" maupun "." yang umum dikirim klien. Input kosong menghasilkan
-// string kosong.
-func normalizeMAC(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-	raw = strings.NewReplacer(":", "", "-", "", ".", "", " ", "").Replace(raw)
-	if len(raw) != 12 {
-		return strings.ToUpper(raw)
-	}
-	parts := make([]string, 0, 6)
-	for i := 0; i < 12; i += 2 {
-		parts = append(parts, strings.ToUpper(raw[i:i+2]))
-	}
-	return strings.Join(parts, ":")
 }
 
 // isUniqueViolation melaporkan apakah err adalah pelanggaran UNIQUE pada kolom

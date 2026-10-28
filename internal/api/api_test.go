@@ -13,8 +13,8 @@ import (
 )
 
 // TestDeviceRegister memastikan registrasi mengembalikan 201 + token sekali
-// pakai, menyimpan token sebagai hash, mewajibkan MAC, dan menolak MAC duplikat
-// dengan 409/2003 (tugas uji #1).
+// pakai, menyimpan token sebagai hash, menyimpan identitas perangkat apa
+// adanya, dan menolak identitas duplikat dengan 409/2003 beserta data kursinya.
 func TestDeviceRegister(t *testing.T) {
 	f := newFixture(t, nil)
 
@@ -39,8 +39,10 @@ func TestDeviceRegister(t *testing.T) {
 			ID         int64  `json:"id"`
 			Name       string `json:"name"`
 			SeatNumber string `json:"seat_number"`
+			MACAddress string `json:"mac_address"`
 		} `json:"device"`
 		Token string `json:"token"`
+		Reset bool   `json:"reset"`
 	}
 	f.decode(env, &data)
 
@@ -49,6 +51,9 @@ func TestDeviceRegister(t *testing.T) {
 	}
 	if data.Device.Name != "Tablet Kursi 12" || data.Device.SeatNumber != "12" {
 		t.Fatalf("device = %+v, mau name/seat_number sesuai request", data.Device)
+	}
+	if data.Reset {
+		t.Fatalf("reset = true pada registrasi baru, mau false")
 	}
 	if !strings.HasPrefix(data.Token, "mc_") {
 		t.Fatalf("token = %q, mau berawalan mc_", data.Token)
@@ -69,19 +74,23 @@ func TestDeviceRegister(t *testing.T) {
 		t.Fatalf("token_hash = %q, mau SHA-256 hex %q", stored, want)
 	}
 
-	// MAC dinormalkan ke bentuk titik dua huruf besar.
+	// Identitas disimpan apa adanya: tidak di-uppercase, pemisah tidak dibuang.
 	var mac string
 	if err := f.db.QueryRow(`SELECT mac_address FROM devices WHERE id = ?`, data.Device.ID).Scan(&mac); err != nil {
 		t.Fatalf("baca mac_address: %v", err)
 	}
-	if mac != "AA:BB:CC:DD:EE:12" {
-		t.Fatalf("mac_address = %q, mau AA:BB:CC:DD:EE:12", mac)
+	if mac != "aa-bb-cc-dd-ee-12" {
+		t.Fatalf("mac_address = %q, mau apa adanya: aa-bb-cc-dd-ee-12", mac)
+	}
+	if data.Device.MACAddress != "aa-bb-cc-dd-ee-12" {
+		t.Fatalf("device.mac_address = %q, mau aa-bb-cc-dd-ee-12", data.Device.MACAddress)
 	}
 
-	// MAC yang sama (format berbeda) harus ditolak.
+	// Identitas yang sama (beda kapitalisasi) harus ditolak beserta data kursi.
 	env, rec = f.do(http.MethodPost, "/devices/register", "", map[string]any{
+		"mac_address": "AA-BB-CC-DD-EE-12",
+		"seat_number": "13",
 		"name":        "Tablet Lain",
-		"mac_address": "AA:BB:CC:DD:EE:12",
 	})
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("status duplikat = %d, mau 409 (body=%s)", rec.Code, rec.Body.String())
@@ -92,28 +101,23 @@ func TestDeviceRegister(t *testing.T) {
 	if len(env.Errors) != 0 {
 		t.Fatalf("errors = %+v, mau kosong", env.Errors)
 	}
-
-	// Validasi field: name wajib.
-	env, rec = f.do(http.MethodPost, "/devices/register", "", map[string]any{"name": "  "})
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("status validasi = %d, mau 422 (body=%s)", rec.Code, rec.Body.String())
+	var conflict struct {
+		DeviceID   int64  `json:"device_id"`
+		SeatNumber string `json:"seat_number"`
+		Name       string `json:"name"`
 	}
-	if env.Code != response.CodeValidationError {
-		t.Fatalf("code validasi = %d, mau %d", env.Code, response.CodeValidationError)
+	f.decode(env, &conflict)
+	if conflict.DeviceID != data.Device.ID {
+		t.Fatalf("data.device_id = %d, mau %d", conflict.DeviceID, data.Device.ID)
 	}
-	var nameMissing bool
-	for _, detail := range env.Errors {
-		if detail.Field == "body.name" {
-			nameMissing = true
-		}
-	}
-	if !nameMissing {
-		t.Fatalf("errors = %+v, mau detail body.name", env.Errors)
+	if conflict.SeatNumber != "12" || conflict.Name != "Tablet Kursi 12" {
+		t.Fatalf("data = %+v, mau kursi 12 milik Tablet Kursi 12", conflict)
 	}
 
-	// MAC wajib diisi.
+	// Validasi field: mac_address wajib diisi.
 	env, rec = f.do(http.MethodPost, "/devices/register", "", map[string]any{
-		"name": "Tablet Tanpa MAC",
+		"seat_number": "14",
+		"mac_address": "   ",
 	})
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status MAC kosong = %d, mau 422 (body=%s)", rec.Code, rec.Body.String())
@@ -131,22 +135,21 @@ func TestDeviceRegister(t *testing.T) {
 		t.Fatalf("errors = %+v, mau detail body.mac_address", env.Errors)
 	}
 
-	// Validasi format MAC.
+	// Validasi field: seat_number wajib diisi.
 	env, rec = f.do(http.MethodPost, "/devices/register", "", map[string]any{
-		"name":        "Tablet MAC Salah",
-		"mac_address": "bukan-mac",
+		"mac_address": "android-tanpa-kursi",
 	})
 	if rec.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("status MAC salah = %d, mau 422 (body=%s)", rec.Code, rec.Body.String())
+		t.Fatalf("status kursi kosong = %d, mau 422 (body=%s)", rec.Code, rec.Body.String())
 	}
-	var found bool
+	var seatMissing bool
 	for _, detail := range env.Errors {
-		if detail.Field == "body.mac_address" {
-			found = true
+		if detail.Field == "body.seat_number" {
+			seatMissing = true
 		}
 	}
-	if !found {
-		t.Fatalf("errors = %+v, mau detail body.mac_address", env.Errors)
+	if !seatMissing {
+		t.Fatalf("errors = %+v, mau detail body.seat_number", env.Errors)
 	}
 }
 

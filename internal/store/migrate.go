@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"embed"
 	"errors"
 	"fmt"
@@ -30,8 +31,16 @@ type migration struct {
 
 // Migrate menerapkan migrasi yang belum tercatat di tabel schema_migrations.
 // Migrasi dijalankan berurutan menurut nama file, masing-masing dalam satu
-// transaksi. Memanggil Migrate berulang kali aman (idempotent).
-func (s *Store) Migrate(ctx context.Context) error {
+// transaksi pada satu koneksi khusus.
+//
+// foreign_keys dimatikan di koneksi itu sebelum transaksi dimulai karena
+// migrasi rebuild tabel (DROP TABLE + RENAME) akan memicu ON DELETE CASCADE
+// pada tabel anak bila foreign key aktif. Setelah seluruh migrasi selesai,
+// foreign_key_check dijalankan (migrasi digagalkan bila masih ada baris yang
+// melanggar) lalu foreign_keys dinyalakan kembali.
+//
+// Memanggil Migrate berulang kali aman (idempotent).
+func (s *Store) Migrate(ctx context.Context) (err error) {
 	if s == nil || s.write == nil {
 		return errors.New("store: Migrate dipanggil pada Store yang sudah ditutup")
 	}
@@ -41,7 +50,28 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return err
 	}
 
-	applied, err := s.appliedVersions(ctx)
+	conn, err := s.write.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("store: ambil koneksi migrasi: %w", err)
+	}
+	defer func() {
+		// foreign_keys wajib menyala lagi sebelum koneksi kembali ke pool.
+		// Konteks tanpa pembatalan dipakai agar pemulihan tetap berjalan walau
+		// ctx sudah dibatalkan.
+		cleanupCtx := context.WithoutCancel(ctx)
+		if _, perr := conn.ExecContext(cleanupCtx, "PRAGMA foreign_keys=ON"); perr != nil && err == nil {
+			err = fmt.Errorf("store: menyalakan kembali foreign_keys: %w", perr)
+		}
+		if cerr := conn.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("store: menutup koneksi migrasi: %w", cerr)
+		}
+	}()
+
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+		return fmt.Errorf("store: mematikan foreign_keys: %w", err)
+	}
+
+	applied, err := appliedVersions(ctx, conn)
 	if err != nil {
 		return err
 	}
@@ -50,18 +80,18 @@ func (s *Store) Migrate(ctx context.Context) error {
 		if applied[m.version] {
 			continue
 		}
-		if err := s.applyMigration(ctx, m); err != nil {
+		if err := applyMigration(ctx, conn, m); err != nil {
 			return err
 		}
 	}
 
-	return nil
+	return checkForeignKeys(ctx, conn)
 }
 
 // applyMigration menjalankan semua statement satu migrasi dalam satu transaksi
 // lalu mencatatnya di schema_migrations.
-func (s *Store) applyMigration(ctx context.Context, m migration) error {
-	tx, err := s.write.BeginTx(ctx, nil)
+func applyMigration(ctx context.Context, conn *sql.Conn, m migration) error {
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store: mulai transaksi migrasi %s: %w", m.name, err)
 	}
@@ -87,11 +117,40 @@ func (s *Store) applyMigration(ctx context.Context, m migration) error {
 	return nil
 }
 
-// appliedVersions membaca versi migrasi yang sudah tercatat. Bila tabel
-// schema_migrations belum ada (database baru), hasilnya kosong.
-func (s *Store) appliedVersions(ctx context.Context) (map[int]bool, error) {
+// checkForeignKeys menjalankan PRAGMA foreign_key_check dan mengembalikan error
+// bila masih ada baris yang melanggar referensi antar tabel.
+func checkForeignKeys(ctx context.Context, conn *sql.Conn) error {
+	rows, err := conn.QueryContext(ctx, "PRAGMA foreign_key_check")
+	if err != nil {
+		return fmt.Errorf("store: foreign_key_check: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("store: iterasi foreign_key_check: %w", err)
+		}
+		return nil
+	}
+
+	var (
+		table  string
+		rowid  sql.NullInt64
+		parent string
+		fkid   int64
+	)
+	if err := rows.Scan(&table, &rowid, &parent, &fkid); err != nil {
+		return fmt.Errorf("store: membaca hasil foreign_key_check: %w", err)
+	}
+
+	return fmt.Errorf("store: migrasi meninggalkan pelanggaran foreign key pada tabel %q (induk %q)", table, parent)
+}
+
+// appliedVersions membaca versi migrasi yang sudah tercatat pada koneksi conn.
+// Bila tabel schema_migrations belum ada (database baru), hasilnya kosong.
+func appliedVersions(ctx context.Context, conn *sql.Conn) (map[int]bool, error) {
 	var n int
-	err := s.write.QueryRowContext(ctx,
+	err := conn.QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM "+sqliteMasterTable+" WHERE type='table' AND name=?",
 		schemaMigrations,
 	).Scan(&n)
@@ -104,7 +163,7 @@ func (s *Store) appliedVersions(ctx context.Context) (map[int]bool, error) {
 		return applied, nil
 	}
 
-	rows, err := s.write.QueryContext(ctx, "SELECT version FROM "+schemaMigrations)
+	rows, err := conn.QueryContext(ctx, "SELECT version FROM "+schemaMigrations)
 	if err != nil {
 		return nil, fmt.Errorf("store: baca %s: %w", schemaMigrations, err)
 	}

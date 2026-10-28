@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"io/fs"
 	"path/filepath"
 	"strings"
@@ -232,5 +233,175 @@ func TestLoadMigrations(t *testing.T) {
 	}
 	if len(entries) != len(migrations) {
 		t.Errorf("migrasi ter-embed = %d, terbaca = %d", len(entries), len(migrations))
+	}
+}
+
+// 9. Migrasi 0006: devices.name boleh NULL dan identitas unik
+// case-insensitive.
+func TestDevicesIdentitySchema(t *testing.T) {
+	s := newMigratedStore(t)
+	ctx := context.Background()
+
+	// name tidak lagi NOT NULL.
+	var notNull int
+	if err := s.Write().QueryRowContext(ctx,
+		`SELECT "notnull" FROM pragma_table_info('devices') WHERE name = 'name'`,
+	).Scan(&notNull); err != nil {
+		t.Fatalf("baca pragma_table_info(devices).name: %v", err)
+	}
+	if notNull != 0 {
+		t.Errorf("devices.name NOT NULL = %d, ingin 0 (nama opsional)", notNull)
+	}
+
+	// name kosong boleh, dan tersimpan sebagai NULL.
+	if _, err := s.Write().ExecContext(ctx,
+		`INSERT INTO devices (name, seat_number, mac_address, token_hash) VALUES (NULL, '1', 'android-a1b2-c3d4', 'hash-1')`,
+	); err != nil {
+		t.Fatalf("insert device tanpa nama error: %v", err)
+	}
+
+	// Identitas unik tanpa memandang kapitalisasi.
+	_, err := s.Write().ExecContext(ctx,
+		`INSERT INTO devices (name, seat_number, mac_address, token_hash) VALUES ('Lain', '2', 'ANDROID-A1B2-C3D4', 'hash-2')`,
+	)
+	if err == nil {
+		t.Fatal("insert identitas beda kapitalisasi tidak error, ingin UNIQUE constraint failed")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "unique constraint failed") {
+		t.Errorf("error = %v, ingin memuat \"UNIQUE constraint failed\"", err)
+	}
+
+	// Index untuk panel admin ikut dibuat ulang.
+	var indexes int
+	if err := s.Write().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_devices_active'`,
+	).Scan(&indexes); err != nil {
+		t.Fatalf("hitung index idx_devices_active: %v", err)
+	}
+	if indexes != 1 {
+		t.Errorf("index idx_devices_active = %d, ingin 1", indexes)
+	}
+}
+
+// 10. Rebuild devices pada migrasi 0006 tidak menghapus playback_progress.
+func TestMigrateDevicesRebuildKeepsProgress(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("loadMigrations() error: %v", err)
+	}
+
+	// Terapkan migrasi sebelum 0006 supaya ada data dengan skema devices lama.
+	conn, err := s.Write().Conn(ctx)
+	if err != nil {
+		t.Fatalf("ambil koneksi migrasi: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+		t.Fatalf("pragma foreign_keys=OFF: %v", err)
+	}
+	for _, m := range migrations {
+		if m.version >= 6 {
+			continue
+		}
+		if err := applyMigration(ctx, conn, m); err != nil {
+			t.Fatalf("applyMigration(%s) error: %v", m.name, err)
+		}
+	}
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys=ON"); err != nil {
+		t.Fatalf("pragma foreign_keys=ON: %v", err)
+	}
+	// Pool tulis hanya punya satu koneksi: kembalikan dulu agar Migrate dan
+	// seed berikutnya tidak menunggu selamanya.
+	if err := conn.Close(); err != nil {
+		t.Fatalf("tutup koneksi migrasi: %v", err)
+	}
+
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := s.Write().ExecContext(ctx, query, args...); err != nil {
+			t.Fatalf("seed %q error: %v", query, err)
+		}
+	}
+
+	exec(`INSERT INTO providers (id, code, name) VALUES (1, 'dens_tv', 'Dens TV')`)
+	exec(`INSERT INTO titles (id, provider_id, external_id, kind, title, slug)
+	      VALUES (1, 1, 'ext-1', 'movie', 'Film Lama', 'film-lama')`)
+	exec(`INSERT INTO playables (id, title_id, duration_seconds) VALUES (1, 1, 5400)`)
+	// name NOT NULL pada skema lama: nama kosong disimpan sebagai ''.
+	exec(`INSERT INTO devices (id, name, seat_number, mac_address, token_hash, is_active)
+	      VALUES (7, 'Tablet Lama', '3', 'aa-bb-cc-dd-ee-07', 'hash-7', 1)`)
+	exec(`INSERT INTO devices (id, name, seat_number, mac_address, token_hash, is_active)
+	      VALUES (8, '', '4', 'android-a1b2-c3d4', 'hash-8', 1)`)
+	exec(`INSERT INTO playback_progress (device_id, playable_id, position_seconds)
+	      VALUES (7, 1, 120)`)
+
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error: %v", err)
+	}
+
+	var devices int
+	if err := s.Write().QueryRowContext(ctx, `SELECT COUNT(*) FROM devices`).Scan(&devices); err != nil {
+		t.Fatalf("hitung devices: %v", err)
+	}
+	if devices != 2 {
+		t.Errorf("baris devices = %d, ingin 2", devices)
+	}
+
+	var (
+		name       sql.NullString
+		macAddress string
+	)
+	if err := s.Write().QueryRowContext(ctx,
+		`SELECT name, mac_address FROM devices WHERE id = 7`).Scan(&name, &macAddress); err != nil {
+		t.Fatalf("baca device 7: %v", err)
+	}
+	if !name.Valid || name.String != "Tablet Lama" {
+		t.Errorf("name device 7 = %v, ingin \"Tablet Lama\"", name)
+	}
+	if macAddress != "aa-bb-cc-dd-ee-07" {
+		t.Errorf("mac_address device 7 = %q, ingin tidak berubah", macAddress)
+	}
+
+	// Nama kosong dari skema lama menjadi NULL.
+	if err := s.Write().QueryRowContext(ctx,
+		`SELECT name FROM devices WHERE id = 8`).Scan(&name); err != nil {
+		t.Fatalf("baca device 8: %v", err)
+	}
+	if name.Valid {
+		t.Errorf("name device 8 = %q, ingin NULL", name.String)
+	}
+
+	// Progres tonton tidak boleh ikut terhapus oleh rebuild tabel.
+	var progress int
+	if err := s.Write().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM playback_progress WHERE device_id = 7`).Scan(&progress); err != nil {
+		t.Fatalf("hitung playback_progress: %v", err)
+	}
+	if progress != 1 {
+		t.Errorf("playback_progress device 7 = %d, ingin 1", progress)
+	}
+
+	// foreign_keys kembali menyala pada koneksi pool tulis.
+	var fk int
+	if err := s.Write().QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&fk); err != nil {
+		t.Fatalf("pragma foreign_keys: %v", err)
+	}
+	if fk != 1 {
+		t.Errorf("foreign_keys = %d setelah Migrate, ingin 1", fk)
+	}
+
+	// Tidak ada pelanggaran foreign key yang tersisa.
+	rows, err := s.Write().QueryContext(ctx, "PRAGMA foreign_key_check")
+	if err != nil {
+		t.Fatalf("pragma foreign_key_check: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	if rows.Next() {
+		t.Error("foreign_key_check masih melaporkan pelanggaran setelah migrasi")
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterasi foreign_key_check: %v", err)
 	}
 }

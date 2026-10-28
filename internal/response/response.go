@@ -107,6 +107,13 @@ func Error(w http.ResponseWriter, code int, errs []Detail) {
 	Write(w, HTTPStatus(code), newBody(code, nil, errs))
 }
 
+// ErrorData mengirim response error dengan kode aplikasi, data tambahan, dan
+// daftar detail. Dipakai bila klien butuh konteks kegagalan (mis. kursi yang
+// sudah memakai identitas perangkat).
+func ErrorData(w http.ResponseWriter, code int, data any, errs []Detail) {
+	Write(w, HTTPStatus(code), newBody(code, data, errs))
+}
+
 // ErrorMsg mengirim response error dengan satu pesan tanpa field.
 func ErrorMsg(w http.ResponseWriter, code int, message string) {
 	Error(w, code, []Detail{{Message: message}})
