@@ -368,7 +368,8 @@ func TestDevicesActiveInactive(t *testing.T) {
 		`>tidak aktif</option>`,
 		`<span class="badge active">aktif</span>`,
 		`<span class="badge inactive">tidak aktif</span>`,
-		`placeholder="nama, kursi, identitas, IP"`,
+		`placeholder="catatan, kursi, identitas, IP"`,
+		`<th scope="col">Catatan</th>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("halaman perangkat tidak memuat %q (body=%s)", want, body)
@@ -381,7 +382,7 @@ func TestDevicesActiveInactive(t *testing.T) {
 		}
 	}
 
-	// Kolom Nama memakai isi kolom name apa adanya.
+	// Kolom Catatan memakai isi kolom name apa adanya.
 	if got := deviceNameCell(t, body, 1); got != "Tablet Kursi 12" {
 		t.Fatalf("sel nama perangkat 1 = %q, mau %q", got, "Tablet Kursi 12")
 	}
