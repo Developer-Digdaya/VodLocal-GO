@@ -6,7 +6,7 @@
 // aplikasi (bukan status HTTP) adalah kebenaran yang dibaca klien
 // (docs/standar-response.md). Satu-satunya pengecualian di paket ini adalah
 // master playlist HLS (/playables/{id}/master.m3u8) yang harus tetap berupa
-// playlist valid (docs/api-spec.md §11).
+// playlist valid (docs/api-spec.md 11).
 //
 // Router di sini dipasang di bawah prefix /api/v1 dengan prefix yang sudah
 // dipotong (lihat httpserver.Config.API), sehingga seluruh route ditulis tanpa
@@ -72,7 +72,7 @@ func NewRouter(cfg Config) http.Handler {
 	}
 
 	// Authenticator memakai pool tulis karena setiap request yang valid
-	// memperbarui devices.last_seen_at (api-spec §2).
+	// memperbarui devices.last_seen_at (api-spec 2).
 	deviceAuth := NewAuthenticator(s.write, s.now)
 
 	r := chi.NewRouter()
@@ -122,7 +122,7 @@ func pathParam(r *http.Request, key string) string {
 }
 
 // noStore menambahkan Cache-Control: no-store pada seluruh response API
-// (api-spec §13). Handler master playlist menimpanya dengan no-cache.
+// (api-spec 13). Handler master playlist menimpanya dengan no-cache.
 func noStore(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")

@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-// catalogStats adalah ringkasan katalog pada dashboard (§10.2).
+// catalogStats adalah ringkasan katalog pada dashboard (10.2).
 type catalogStats struct {
 	Titles          int64
 	Episodes        int64
@@ -13,13 +13,13 @@ type catalogStats struct {
 	RenditionsReady int64
 }
 
-// deviceStats adalah ringkasan perangkat pada dashboard (§10.2).
+// deviceStats adalah ringkasan perangkat pada dashboard (10.2).
 type deviceStats struct {
 	Registered int64
 	Online     int64
 }
 
-// storageStats adalah ringkasan penyimpanan pada dashboard (§10.2).
+// storageStats adalah ringkasan penyimpanan pada dashboard (10.2).
 type storageStats struct {
 	UsedBytes   int64
 	TotalBytes  int64
@@ -115,7 +115,7 @@ func (a *Admin) catalogStats(ctx context.Context) (catalogStats, error) {
 	return stats, nil
 }
 
-// deviceStats menghitung perangkat terdaftar dan perangkat online (§10.4).
+// deviceStats menghitung perangkat terdaftar dan perangkat online (10.4).
 func (a *Admin) deviceStats(ctx context.Context) (deviceStats, error) {
 	var stats deviceStats
 	if err := a.read.QueryRowContext(ctx, `SELECT COUNT(*) FROM devices`).Scan(&stats.Registered); err != nil {

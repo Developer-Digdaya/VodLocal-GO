@@ -26,7 +26,7 @@ func (a *Admin) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 //
 // Kredensial salah dijawab 401 dengan halaman form yang sama dan pesan generik,
 // sehingga klien tidak bisa membedakan "pengguna tidak ada" dari "kata sandi
-// salah" (§10.1, kode 2006).
+// salah" (10.1, kode 2006).
 func (a *Admin) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	username := strings.TrimSpace(r.FormValue("username"))
 	password := r.FormValue("password")

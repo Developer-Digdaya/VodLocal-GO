@@ -12,7 +12,7 @@ import (
 	"vodlocal/internal/appsettings"
 )
 
-// Kunci app_settings yang dikelola panel (§10.6).
+// Kunci app_settings yang dikelola panel (10.6).
 const (
 	settingMaxShortSide            = appsettings.MaxShortSideKey
 	settingMaxParallelSegments     = "sync.max_parallel_segments"
@@ -46,7 +46,7 @@ type settingDef struct {
 	Options []settingOption
 }
 
-// settingDefs adalah daftar field pengaturan dalam urutan tampil (§10.6).
+// settingDefs adalah daftar field pengaturan dalam urutan tampil (10.6).
 var settingDefs = []settingDef{
 	{
 		Key:     settingMaxShortSide,

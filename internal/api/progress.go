@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	// defaultProgressLimit dan maxProgressLimit mengikuti §9.2.
+	// defaultProgressLimit dan maxProgressLimit mengikuti 9.2.
 	defaultProgressLimit = 20
 	maxProgressLimit     = 100
 )
 
-// progressRequest adalah body POST /progress (§9.1). Field opsional memakai
+// progressRequest adalah body POST /progress (9.1). Field opsional memakai
 // pointer agar bisa membedakan "tidak dikirim" dari nilai nol.
 type progressRequest struct {
 	PlayableID      *int64 `json:"playable_id"`
@@ -26,7 +26,7 @@ type progressRequest struct {
 	Completed       *bool  `json:"completed"`
 }
 
-// progressItem adalah satu baris riwayat tonton (§9.2).
+// progressItem adalah satu baris riwayat tonton (9.2).
 type progressItem struct {
 	PlayableID      int64  `json:"playable_id"`
 	TitleID         int64  `json:"title_id"`

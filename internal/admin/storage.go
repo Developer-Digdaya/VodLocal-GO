@@ -372,7 +372,7 @@ FROM generations WHERE status = 'active'`,
 	return &generation, nil
 }
 
-// handleStorageDelete melayani POST /storage/generations/{id}/delete (§10.5).
+// handleStorageDelete melayani POST /storage/generations/{id}/delete (10.5).
 //
 // Semua status boleh dihapus: active, building, retired, dan failed. Tidak ada
 // lagi validasi "last batch" / generation.Deletable(); satu-satunya syarat

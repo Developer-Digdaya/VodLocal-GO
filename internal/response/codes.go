@@ -1,6 +1,6 @@
 package response
 
-// Registry kode aplikasi. Sumber kebenaran: docs/standar-response.md §6.
+// Registry kode aplikasi. Sumber kebenaran: docs/standar-response.md 6.
 //
 // Rentang kode dibagi per domain agar tidak bertabrakan:
 //
@@ -15,11 +15,11 @@ package response
 //	8000–8999  Progress
 //	9000+      Dicadangkan
 const (
-	// Sukses (§6.1).
+	// Sukses (6.1).
 	CodeSuccess        = 0
 	CodePartialFailure = 1
 
-	// Umum (§6.2).
+	// Umum (6.2).
 	CodeInternalError        = 1000
 	CodeBadRequest           = 1001
 	CodeNotFound             = 1002
@@ -32,7 +32,7 @@ const (
 	CodeRequestTimeout       = 1009
 	CodeDatabaseError        = 1010
 
-	// Auth & device (§6.3).
+	// Auth & device (6.3).
 	CodeUnauthorized            = 2000
 	CodeForbidden               = 2001
 	CodeDeviceNotFound          = 2002
@@ -43,7 +43,7 @@ const (
 	CodeCSRFInvalid             = 2007
 	CodeTokenInvalid            = 2008
 
-	// Katalog & playback (§6.4).
+	// Katalog & playback (6.4).
 	CodeTitleNotFound       = 3000
 	CodeEpisodeNotFound     = 3001
 	CodePlayableNotFound    = 3002
@@ -51,7 +51,7 @@ const (
 	CodeSearchQueryInvalid  = 3005
 	CodeContentNotPublished = 3006
 
-	// Sync (§6.5).
+	// Sync (6.5).
 	CodeSyncNotFound           = 4000
 	CodeSyncAlreadyRunning     = 4001
 	CodeSyncNotCancellable     = 4002
@@ -63,26 +63,26 @@ const (
 	CodeGenerationSwitchFailed = 4008
 	CodeNoActiveGeneration     = 4009
 
-	// Storage & generation (§6.6).
+	// Storage & generation (6.6).
 	CodeInsufficientStorage     = 5000
 	CodeGenerationActive        = 5001
 	CodeGenerationNotFound      = 5002
 	CodeGenerationNotDeletable  = 5003
 	CodeGenerationMissingOnDisk = 5004
 
-	// Upstream (§6.7).
+	// Upstream (6.7).
 	CodeUpstreamUnavailable = 6000
 	CodeUpstreamTimeout     = 6001
 	CodeUpstreamAuthFailed  = 6002
 	CodeUpstreamRateLimited = 6003
 	CodeUpstreamBadResponse = 6004
 
-	// Media (§6.8).
+	// Media (6.8).
 	CodeMediaNotFound       = 7000
 	CodeInvalidMediaPath    = 7001
 	CodeRangeNotSatisfiable = 7002
 
-	// Progress (§6.9).
+	// Progress (6.9).
 	CodeProgressNotFound = 8000
 	CodeProgressInvalid  = 8001
 )
@@ -90,7 +90,7 @@ const (
 // defaultLabel dipakai untuk kode yang tidak terdaftar di labels.
 const defaultLabel = "Terjadi kesalahan pada server"
 
-// labels memetakan kode aplikasi ke pesan baku (msg). Setiap kode di §6 wajib
+// labels memetakan kode aplikasi ke pesan baku (msg). Setiap kode di 6 wajib
 // punya entri di sini agar msg tidak pernah ditulis manual di handler.
 var labels = map[int]string{
 	CodeSuccess:        "Berhasil",
@@ -156,7 +156,7 @@ var labels = map[int]string{
 	CodeProgressInvalid:  "Data posisi tonton tidak valid",
 }
 
-// httpStatus memetakan kode aplikasi ke HTTP status. Sumber: §5.
+// httpStatus memetakan kode aplikasi ke HTTP status. Sumber: 5.
 var httpStatus = map[int]int{
 	CodeSuccess:        200,
 	CodePartialFailure: 200,

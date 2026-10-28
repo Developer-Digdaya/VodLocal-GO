@@ -2,7 +2,7 @@
 // hiburan bus.
 //
 // Seluruh halaman dirender dengan html/template + Pico CSS yang di-embed ke
-// binary (tanpa CDN) dan mengikuti docs/api-spec.md §10: autentikasi lewat
+// binary (tanpa CDN) dan mengikuti docs/api-spec.md 10: autentikasi lewat
 // cookie sesi httpserver.SessionManager, token CSRF double-submit pada setiap
 // POST, dan Cache-Control: no-store pada semua halaman.
 //
@@ -42,14 +42,14 @@ const (
 	// timeLayout adalah format waktu ISO-8601 UTC yang dipakai seluruh tabel.
 	timeLayout = "2006-01-02T15:04:05Z"
 
-	// onlineWindow adalah batas sebuah perangkat dianggap online (§10.4).
+	// onlineWindow adalah batas sebuah perangkat dianggap online (10.4).
 	onlineWindow = 5 * time.Minute
 
-	// defaultPerPage dan maxPerPage mengikuti docs/api-spec.md §4.
+	// defaultPerPage dan maxPerPage mengikuti docs/api-spec.md 4.
 	defaultPerPage = 10
 	maxPerPage     = 200
 
-	// maxQueryLength adalah batas panjang pencarian di panel admin (§4.1).
+	// maxQueryLength adalah batas panjang pencarian di panel admin (4.1).
 	maxQueryLength = 100
 )
 
@@ -149,7 +149,7 @@ type Admin struct {
 	flashes map[string]flash
 }
 
-// flash adalah pesan sekali-tampil setelah redirect POST (§10).
+// flash adalah pesan sekali-tampil setelah redirect POST (10).
 type flash struct {
 	Kind string
 	Text string
@@ -320,7 +320,7 @@ func (a *Admin) base(w http.ResponseWriter, r *http.Request, title, nav string) 
 }
 
 // csrfToken memakai token dari cookie bila ada, dan membuat cookie baru lewat
-// SessionManager bila belum ada (syarat §10.1).
+// SessionManager bila belum ada (syarat 10.1).
 func (a *Admin) csrfToken(w http.ResponseWriter, r *http.Request) string {
 	if r != nil {
 		if cookie, err := r.Cookie(httpserver.CSRFCookieName); err == nil && cookie.Value != "" {
@@ -491,7 +491,7 @@ func pathID(r *http.Request, key string) (int64, bool) {
 	return id, true
 }
 
-// wantsJSON melaporkan apakah klien mengharapkan body JSON (§10.3).
+// wantsJSON melaporkan apakah klien mengharapkan body JSON (10.3).
 func wantsJSON(r *http.Request) bool {
 	if r == nil {
 		return false
@@ -499,9 +499,9 @@ func wantsJSON(r *http.Request) bool {
 	return strings.Contains(strings.ToLower(r.Header.Get("Accept")), "application/json")
 }
 
-// normalizeQuery menerapkan normalisasi pencarian §4.1: trim, spasi berulang
+// normalizeQuery menerapkan normalisasi pencarian 4.1: trim, spasi berulang
 // menjadi satu, dan pemotongan ke 100 karakter. Tidak ada batas minimum karena
-// panel admin dipakai untuk debugging (§10.9).
+// panel admin dipakai untuk debugging (10.9).
 func normalizeQuery(s string) string {
 	normalized := strings.Join(strings.Fields(s), " ")
 	if runes := []rune(normalized); len(runes) > maxQueryLength {

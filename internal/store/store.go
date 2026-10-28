@@ -34,7 +34,7 @@ const (
 		"&_pragma=foreign_keys(ON)" +
 		"&_pragma=cache_size(-65536)"
 
-	// readMaxOpenConns / writeMaxOpenConns mengikuti desain §10:
+	// readMaxOpenConns / writeMaxOpenConns mengikuti desain 10:
 	// banyak reader, tepat satu writer.
 	readMaxOpenConns  = 8
 	writeMaxOpenConns = 1

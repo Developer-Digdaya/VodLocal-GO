@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	// SessionCookieName adalah cookie sesi admin (docs/api-spec.md §2).
+	// SessionCookieName adalah cookie sesi admin (docs/api-spec.md 2).
 	SessionCookieName = "mc_session"
 	// CSRFCookieName adalah cookie double-submit token CSRF untuk form admin.
 	CSRFCookieName = "mc_csrf"

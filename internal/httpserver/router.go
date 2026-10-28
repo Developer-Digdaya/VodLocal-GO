@@ -3,7 +3,7 @@
 //
 // Bentuk response mengikuti docs/standar-response.md: semua response JSON
 // memakai envelope dari package response. Endpoint yang dikecualikan dokumen
-// tersebut (docs/api-spec.md §11) — /media/*, /health, /ready —
+// tersebut (docs/api-spec.md 11) — /media/*, /health, /ready —
 // mengembalikan bytes mentah atau JSON sederhana tanpa envelope.
 package httpserver
 
@@ -48,7 +48,7 @@ type Config struct {
 // Middleware global: chi RequestID, RealIP, Recoverer, dan access log slog.
 // Route media sengaja tidak memakai middleware.Timeout maupun
 // middleware.Compress agar transfer besar dengan Range tetap murni bytes
-// (docs/api-spec.md §13).
+// (docs/api-spec.md 13).
 func NewRouter(cfg Config) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -83,7 +83,7 @@ func NewRouter(cfg Config) http.Handler {
 
 // withRequestIDHeader menyalin request ID yang dibuat middleware.RequestID ke
 // header response X-Request-ID, sehingga klien bisa mengorelasikan permintaan
-// dengan log (docs/standar-response.md §10).
+// dengan log (docs/standar-response.md 10).
 func withRequestIDHeader(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if id := middleware.GetReqID(r.Context()); id != "" {

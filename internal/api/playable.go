@@ -11,14 +11,14 @@ import (
 	"vodlocal/internal/response"
 )
 
-// episodeRef adalah ringkasan episode di dalam detail playable (§8.1).
+// episodeRef adalah ringkasan episode di dalam detail playable (8.1).
 type episodeRef struct {
 	SeasonNumber  int64 `json:"season_number"`
 	EpisodeNumber int64 `json:"episode_number"`
 	Name          any   `json:"name"`
 }
 
-// variantItem adalah satu rendisi siap pada detail playable (§8.1).
+// variantItem adalah satu rendisi siap pada detail playable (8.1).
 type variantItem struct {
 	Quality     string `json:"quality"`
 	Width       any    `json:"width"`
@@ -27,7 +27,7 @@ type variantItem struct {
 	Ready       bool   `json:"ready"`
 }
 
-// subtitleItem adalah satu subtitle siap pada detail playable (§8.1).
+// subtitleItem adalah satu subtitle siap pada detail playable (8.1).
 type subtitleItem struct {
 	Lang   string `json:"lang"`
 	Label  any    `json:"label"`
@@ -254,7 +254,7 @@ func (s *server) handlePlayable(w http.ResponseWriter, r *http.Request) {
 // handleMasterPlaylist melayani GET /playables/{id}/master.m3u8.
 //
 // Response-nya bukan envelope JSON: isinya harus playlist HLS valid
-// (docs/api-spec.md §11). Kegagalan tetap memakai envelope supaya klien bisa
+// (docs/api-spec.md 11). Kegagalan tetap memakai envelope supaya klien bisa
 // membaca kode 3002/3003/4009.
 func (s *server) handleMasterPlaylist(w http.ResponseWriter, r *http.Request) {
 	id, valid := pathID(r, "id")

@@ -17,7 +17,7 @@ import (
 )
 
 // likeEscapeClause dipakai seluruh pencarian agar input pengguna tidak pernah
-// menjadi wildcard LIKE (§4.1).
+// menjadi wildcard LIKE (4.1).
 const likeEscapeClause = ` ESCAPE '\'`
 
 // Status sync yang dianggap terminal.
@@ -27,7 +27,7 @@ const (
 	syncStatusCancelled = "cancelled"
 )
 
-// syncStatuses adalah nilai status sync_runs yang diterima filter §10.3.
+// syncStatuses adalah nilai status sync_runs yang diterima filter 10.3.
 var syncStatuses = []string{
 	"queued", "running", "verifying", "switching", "cleanup",
 	syncStatusCompleted, syncStatusFailed, syncStatusCancelled,
@@ -152,7 +152,7 @@ func syncRunFilter(query, status string) (string, []any) {
 }
 
 // listSyncRuns membaca satu halaman riwayat sinkronisasi dengan filter
-// q/status (§10.3).
+// q/status (10.3).
 func (a *Admin) listSyncRuns(ctx context.Context, query, status string, limit, offset int) ([]syncRunView, error) {
 	if limit <= 0 {
 		limit = 20
@@ -201,7 +201,7 @@ func containsString(values []string, want string) bool {
 	return false
 }
 
-// syncStatusPayload adalah bentuk data GET /sync/{id}/status (§10.3).
+// syncStatusPayload adalah bentuk data GET /sync/{id}/status (10.3).
 type syncStatusPayload struct {
 	ID               int64  `json:"id"`
 	Status           string `json:"status"`
@@ -299,7 +299,7 @@ type generationItemRow struct {
 	ErrorMessage     string `json:"error_message"`
 }
 
-// generationItemsQuery membaca progres per series sebuah generation (§10.3).
+// generationItemsQuery membaca progres per series sebuah generation (10.3).
 const generationItemsQuery = `
 SELECT id, series_title, series_external_id, category, status,
        total_episodes, episodes_done, episodes_failed,
@@ -572,7 +572,7 @@ func (a *Admin) handleSyncList(w http.ResponseWriter, r *http.Request) {
 //
 // Sinkronisasi dijalankan di goroutine terpisah: permintaan hanya memastikan
 // tidak ada run aktif lalu mengalihkan (303) ke halaman /sync, sehingga
-// koneksi HTTP tidak tertahan selama proses berjam-jam (§10.3).
+// koneksi HTTP tidak tertahan selama proses berjam-jam (10.3).
 func (a *Admin) handleSyncStart(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -670,7 +670,7 @@ func (a *Admin) handleSyncDetail(w http.ResponseWriter, r *http.Request) {
 	}, http.StatusOK)
 }
 
-// handleSyncStatus melayani GET /sync/{id}/status (§10.3).
+// handleSyncStatus melayani GET /sync/{id}/status (10.3).
 func (a *Admin) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id, ok := pathID(r, "id")
@@ -720,7 +720,7 @@ func (a *Admin) syncStatusNotFound(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSyncItems melayani GET /sync/{id}/items: progres per series sebuah run
-// untuk polling halaman detail (§10.3).
+// untuk polling halaman detail (10.3).
 //
 // Klien yang meminta JSON menerima envelope {items, summary}; selain itu
 // dikirim fragmen HTML (template generation_items) yang bisa langsung

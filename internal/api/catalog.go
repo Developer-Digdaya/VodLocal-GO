@@ -56,7 +56,7 @@ var titleSortOrders = map[string]string{
 	"release_year":  "COALESCE(t.release_year, 0) ASC, t.title COLLATE NOCASE ASC, t.id ASC",
 }
 
-// titleItem adalah bentuk judul pada endpoint katalog (§7.2).
+// titleItem adalah bentuk judul pada endpoint katalog (7.2).
 type titleItem struct {
 	ID              int64  `json:"id"`
 	Provider        string `json:"provider"`
@@ -74,7 +74,7 @@ type titleItem struct {
 	Playable        bool   `json:"playable"`
 }
 
-// seasonItem adalah satu baris data.seasons pada detail judul (§7.3).
+// seasonItem adalah satu baris data.seasons pada detail judul (7.3).
 type seasonItem struct {
 	SeasonNumber int64 `json:"season_number"`
 	EpisodeCount int64 `json:"episode_count"`
@@ -87,7 +87,7 @@ type titleDetail struct {
 	FirstPlayableID any          `json:"first_playable_id"`
 }
 
-// episodeItem adalah satu baris daftar episode (§7.4).
+// episodeItem adalah satu baris daftar episode (7.4).
 type episodeItem struct {
 	ID              int64 `json:"id"`
 	SeasonNumber    int64 `json:"season_number"`
@@ -107,7 +107,7 @@ type rowScanner interface {
 }
 
 // generationMediaURL menyusun URL isi sebuah generation untuk poster, backdrop,
-// dan still (§7.2). Poster/backdrop kini tersimpan di dalam folder generation
+// dan still (7.2). Poster/backdrop kini tersimpan di dalam folder generation
 // (satu folder dengan m3u8/ts), jadi kolom poster_path/backdrop_path/still_path
 // berisi path relatif terhadap root generation dan harus tampil sebagai
 // /media/<label>/<path>.
@@ -161,7 +161,7 @@ func scanTitleItem(sc rowScanner) (titleItem, error) {
 	return item, nil
 }
 
-// listData adalah bentuk data endpoint list (§4, R12).
+// listData adalah bentuk data endpoint list (4, R12).
 type listData[T any] struct {
 	Items []T      `json:"items"`
 	Meta  pageMeta `json:"meta"`
@@ -489,13 +489,13 @@ func (s *server) handleTitleEpisodes(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, listData[episodeItem]{Items: items, Meta: page.meta(total)})
 }
 
-// Batas hasil pencarian gabungan (§7.5).
+// Batas hasil pencarian gabungan (7.5).
 const (
 	defaultSearchLimit = 20
 	maxSearchLimit     = 50
 )
 
-// searchTitleItem adalah satu judul pada hasil GET /search (§7.5).
+// searchTitleItem adalah satu judul pada hasil GET /search (7.5).
 type searchTitleItem struct {
 	ID           int64  `json:"id"`
 	Kind         string `json:"kind"`
@@ -506,7 +506,7 @@ type searchTitleItem struct {
 	Match        string `json:"match"`
 }
 
-// searchEpisodeItem adalah satu episode pada hasil GET /search (§7.5).
+// searchEpisodeItem adalah satu episode pada hasil GET /search (7.5).
 type searchEpisodeItem struct {
 	ID            int64  `json:"id"`
 	TitleID       int64  `json:"title_id"`
@@ -609,7 +609,7 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 // searchTitles mengembalikan judul yang cocok pada kolom titles.title, terurut
-// menurut aturan §4.1 (prefix lebih dulu, lalu terbaru).
+// menurut aturan 4.1 (prefix lebih dulu, lalu terbaru).
 func (s *server) searchTitles(ctx context.Context, search, kind string, limit int64) ([]searchTitleItem, int64, error) {
 	conditions := []string{
 		"t.is_published = 1",
@@ -671,7 +671,7 @@ func (s *server) searchTitles(ctx context.Context, search, kind string, limit in
 
 // searchEpisodes mengembalikan episode yang namanya cocok. Episode yang hanya
 // cocok karena judulnya cocok tidak diikutkan, sehingga satu episode tidak
-// pernah muncul dua kali (§7.5).
+// pernah muncul dua kali (7.5).
 func (s *server) searchEpisodes(ctx context.Context, search, kind string, limit int64) ([]searchEpisodeItem, int64, error) {
 	conditions := []string{
 		"t.is_published = 1",

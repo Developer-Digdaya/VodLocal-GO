@@ -43,9 +43,9 @@ const (
 )
 
 // MediaHandler melayani GET /media/{generation}/* sebagai bytes mentah, tanpa
-// envelope JSON (docs/api-spec.md §11).
+// envelope JSON (docs/api-spec.md 11).
 //
-// Content-Type ditentukan dari ekstensi, Cache-Control mengikuti §13, dan body
+// Content-Type ditentukan dari ekstensi, Cache-Control mengikuti 13, dan body
 // dikirim lewat http.ServeContent sehingga Range, If-Range, Last-Modified, dan
 // ETag ditangani otomatis.
 func MediaHandler(res MediaResolver) http.Handler {
@@ -175,7 +175,7 @@ func openStatus(err error) int {
 }
 
 // mediaContentType mengembalikan Content-Type berdasarkan ekstensi berkas
-// (api-spec §12.2). Ekstensi tak dikenal dilayani sebagai bytes mentah.
+// (api-spec 12.2). Ekstensi tak dikenal dilayani sebagai bytes mentah.
 func mediaContentType(ext string) string {
 	switch ext {
 	case ".m3u8":
@@ -198,7 +198,7 @@ func mediaContentType(ext string) string {
 }
 
 // cacheControl mengembalikan nilai Cache-Control untuk ekstensi tersebut
-// (api-spec §13). Tipe yang tidak diatur dokumen tidak diberi header.
+// (api-spec 13). Tipe yang tidak diatur dokumen tidak diberi header.
 func cacheControl(ext string) string {
 	switch ext {
 	case ".ts", ".m4s":
@@ -212,7 +212,7 @@ func cacheControl(ext string) string {
 }
 
 // writeStatus mengirim status HTTP tanpa body dan tanpa envelope JSON. Ini
-// bentuk error yang benar untuk route media (docs/standar-response.md §11).
+// bentuk error yang benar untuk route media (docs/standar-response.md 11).
 func writeStatus(w http.ResponseWriter, status int) {
 	w.Header().Del("Cache-Control")
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")

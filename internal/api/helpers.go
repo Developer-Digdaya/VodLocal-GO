@@ -15,23 +15,23 @@ import (
 )
 
 const (
-	// defaultPerPage dan maxPerPage mengikuti docs/api-spec.md §4.
+	// defaultPerPage dan maxPerPage mengikuti docs/api-spec.md 4.
 	defaultPerPage = 50
 	maxPerPage     = 200
 
-	// maxBodyBytes adalah batas body JSON (§1: 64 KB).
+	// maxBodyBytes adalah batas body JSON (1: 64 KB).
 	maxBodyBytes = 64 << 10
 
 	// timeLayout adalah format waktu ISO-8601 UTC yang dipakai seluruh DB.
 	timeLayout = "2006-01-02T15:04:05Z"
 
-	// minSearchLength dan maxSearchLength mengikuti §4.1: di bawah minimum
+	// minSearchLength dan maxSearchLength mengikuti 4.1: di bawah minimum
 	// ditolak, di atas maksimum dipotong tanpa error.
 	minSearchLength = 2
 	maxSearchLength = 100
 )
 
-// pageMeta adalah bentuk data.meta untuk endpoint list (§4, R12).
+// pageMeta adalah bentuk data.meta untuk endpoint list (4, R12).
 type pageMeta struct {
 	Page       int64 `json:"page"`
 	PerPage    int64 `json:"per_page"`
@@ -156,7 +156,7 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	return false
 }
 
-// normalizeSearchText menerapkan aturan §4.1: trim, spasi berulang menjadi
+// normalizeSearchText menerapkan aturan 4.1: trim, spasi berulang menjadi
 // satu, dan pemotongan ke 100 karakter.
 func normalizeSearchText(s string) string {
 	normalized := strings.Join(strings.Fields(s), " ")
@@ -203,7 +203,7 @@ func isoTime(s string) any {
 	return s
 }
 
-// nullText menampilkan string kosong sebagai null (§1: field kosong = null).
+// nullText menampilkan string kosong sebagai null (1: field kosong = null).
 func nullText(s string) any {
 	if strings.TrimSpace(s) == "" {
 		return nil
@@ -236,7 +236,7 @@ func nullIfBlank(s string) any {
 	return s
 }
 
-// mediaURL menyusun URL media di dalam sebuah generation (§8.1).
+// mediaURL menyusun URL media di dalam sebuah generation (8.1).
 func mediaURL(generation, path string) string {
 	return "/media/" + generation + "/" + strings.TrimPrefix(strings.ReplaceAll(path, `\`, "/"), "/")
 }

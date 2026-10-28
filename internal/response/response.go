@@ -1,7 +1,7 @@
 // Package response menyediakan envelope JSON standar untuk seluruh handler
 // HTTP (net/http + chi) di proyek ini.
 //
-// Bentuk envelope (docs/standar-response.md §2):
+// Bentuk envelope (docs/standar-response.md 2):
 //
 //	{ "code": 0, "msg": "Berhasil", "data": null, "errors": [] }
 //
@@ -43,7 +43,7 @@ func Label(code int) string {
 	return defaultLabel
 }
 
-// HTTPStatus menurunkan status HTTP dari kode aplikasi (§5).
+// HTTPStatus menurunkan status HTTP dari kode aplikasi (5).
 // Kode yang tidak dikenal menghasilkan 500 (fail closed).
 func HTTPStatus(code int) int {
 	if s, ok := httpStatus[code]; ok {

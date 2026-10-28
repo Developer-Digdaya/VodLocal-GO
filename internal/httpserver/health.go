@@ -17,7 +17,7 @@ type Readiness interface {
 }
 
 // healthBody adalah bentuk GET /health: sederhana dan tanpa envelope
-// (docs/api-spec.md §11).
+// (docs/api-spec.md 11).
 type healthBody struct {
 	Status        string `json:"status"`
 	Version       string `json:"version"`

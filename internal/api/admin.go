@@ -10,7 +10,7 @@ import (
 	"vodlocal/internal/response"
 )
 
-// onlineWindow adalah batas waktu sebuah device dianggap online (§10.2/§10.4).
+// onlineWindow adalah batas waktu sebuah device dianggap online (10.2/10.4).
 const onlineWindow = 5 * time.Minute
 
 // adminGeneration adalah bagian generation pada /admin/overview.
@@ -53,7 +53,7 @@ type adminSync struct {
 	Status string `json:"status"`
 }
 
-// adminOverview adalah data GET /admin/overview (§10.7).
+// adminOverview adalah data GET /admin/overview (10.7).
 type adminOverview struct {
 	Generation any          `json:"generation"`
 	Catalog    adminCatalog `json:"catalog"`
