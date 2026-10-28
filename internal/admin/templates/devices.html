@@ -19,7 +19,7 @@
     <select id="sort" name="sort">
       <option value="-last_seen_at"{{if eq .Sort "-last_seen_at"}} selected{{end}}>terakhir terlihat</option>
       <option value="seat_number"{{if eq .Sort "seat_number"}} selected{{end}}>nomor kursi</option>
-      <option value="name"{{if eq .Sort "name"}} selected{{end}}>catatan</option>
+      <option value="note"{{if eq .Sort "note"}} selected{{end}}>catatan</option>
       <option value="-created_at"{{if eq .Sort "-created_at"}} selected{{end}}>terbaru</option>
     </select>
   </div>
@@ -49,7 +49,7 @@
     {{range .Devices}}
       <tr>
         <td>{{.ID}}</td>
-        <td>{{if .Name}}{{.Name}}{{else}}—{{end}}</td>
+        <td>{{if .Note}}{{.Note}}{{else}}—{{end}}</td>
         <td>{{if .SeatNumber}}{{.SeatNumber}}{{else}}—{{end}}</td>
         <td class="small">{{if .MACAddress}}{{.MACAddress}}{{else}}—{{end}}</td>
         <td class="small">{{if .IPAddress}}{{.IPAddress}}{{else}}—{{end}}</td>

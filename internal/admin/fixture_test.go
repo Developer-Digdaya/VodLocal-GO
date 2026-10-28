@@ -340,10 +340,10 @@ func (f *fixture) seed() {
 	        VALUES (9003, 42, '480p', 'failed', 'dens_tv/movies/2/480p/index.m3u8')`)
 
 	// Perangkat: satu aktif, satu tidak aktif.
-	f.exec(`INSERT INTO devices (id, name, seat_number, mac_address, ip_address, token_hash, is_active, last_seen_at, created_at)
+	f.exec(`INSERT INTO devices (id, note, seat_number, mac_address, ip_address, token_hash, is_active, last_seen_at, created_at)
 	        VALUES (1, 'Tablet Kursi 12', '12', 'AA:BB:CC:DD:EE:12', '192.0.2.12', ?, 1, '2026-10-20T11:28:00Z', '2026-10-01T00:00:00Z')`,
 		hashToken("mc_token-lama-perangkat-12"))
-	f.exec(`INSERT INTO devices (id, name, seat_number, mac_address, ip_address, token_hash, is_active, created_at)
+	f.exec(`INSERT INTO devices (id, note, seat_number, mac_address, ip_address, token_hash, is_active, created_at)
 	        VALUES (2, 'Tablet Kursi 13', '13', 'AA:BB:CC:DD:EE:13', '192.0.2.13', ?, 0, '2026-10-01T00:00:00Z')`,
 		hashToken("mc_token-lama-perangkat-13"))
 

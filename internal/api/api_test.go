@@ -19,7 +19,7 @@ func TestDeviceRegister(t *testing.T) {
 	f := newFixture(t, nil)
 
 	env, rec := f.do(http.MethodPost, "/devices/register", "", map[string]any{
-		"name":        "Tablet Kursi 12",
+		"note":        "Tablet Kursi 12",
 		"seat_number": "12",
 		"mac_address": "aa-bb-cc-dd-ee-12",
 		"app_version": "1.0.3",
@@ -37,7 +37,7 @@ func TestDeviceRegister(t *testing.T) {
 	var data struct {
 		Device struct {
 			ID         int64  `json:"id"`
-			Name       string `json:"name"`
+			Note       string `json:"note"`
 			SeatNumber string `json:"seat_number"`
 			MACAddress string `json:"mac_address"`
 		} `json:"device"`
@@ -49,7 +49,7 @@ func TestDeviceRegister(t *testing.T) {
 	if data.Device.ID < 1 {
 		t.Fatalf("device.id = %d, mau > 0", data.Device.ID)
 	}
-	if data.Device.Name != "Tablet Kursi 12" || data.Device.SeatNumber != "12" {
+	if data.Device.Note != "Tablet Kursi 12" || data.Device.SeatNumber != "12" {
 		t.Fatalf("device = %+v, mau name/seat_number sesuai request", data.Device)
 	}
 	if data.Reset {
@@ -90,7 +90,7 @@ func TestDeviceRegister(t *testing.T) {
 	env, rec = f.do(http.MethodPost, "/devices/register", "", map[string]any{
 		"mac_address": "AA-BB-CC-DD-EE-12",
 		"seat_number": "13",
-		"name":        "Tablet Lain",
+		"note":        "Tablet Lain",
 	})
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("status duplikat = %d, mau 409 (body=%s)", rec.Code, rec.Body.String())
@@ -104,13 +104,13 @@ func TestDeviceRegister(t *testing.T) {
 	var conflict struct {
 		DeviceID   int64  `json:"device_id"`
 		SeatNumber string `json:"seat_number"`
-		Name       string `json:"name"`
+		Note       string `json:"note"`
 	}
 	f.decode(env, &conflict)
 	if conflict.DeviceID != data.Device.ID {
 		t.Fatalf("data.device_id = %d, mau %d", conflict.DeviceID, data.Device.ID)
 	}
-	if conflict.SeatNumber != "12" || conflict.Name != "Tablet Kursi 12" {
+	if conflict.SeatNumber != "12" || conflict.Note != "Tablet Kursi 12" {
 		t.Fatalf("data = %+v, mau kursi 12 milik Tablet Kursi 12", conflict)
 	}
 
@@ -166,14 +166,14 @@ func TestDeviceAuthentication(t *testing.T) {
 
 	var data struct {
 		ID         int64   `json:"id"`
-		Name       string  `json:"name"`
+		Note       string  `json:"note"`
 		SeatNumber string  `json:"seat_number"`
 		IsActive   bool    `json:"is_active"`
 		LastSeenAt *string `json:"last_seen_at"`
 		CreatedAt  *string `json:"created_at"`
 	}
 	f.decode(env, &data)
-	if data.ID != id || data.Name != "Tablet Kursi 1" || !data.IsActive {
+	if data.ID != id || data.Note != "Tablet Kursi 1" || !data.IsActive {
 		t.Fatalf("data = %+v, mau device %d aktif", data, id)
 	}
 	if data.LastSeenAt == nil || *data.LastSeenAt != "2026-10-20T11:30:00Z" {
@@ -979,7 +979,7 @@ func TestAuthenticatorDirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Authenticate: %v", err)
 	}
-	if device.ID != id || device.Name != "Tablet Kursi 14" || device.SeatNumber != "7" {
+	if device.ID != id || device.Note != "Tablet Kursi 14" || device.SeatNumber != "7" {
 		t.Fatalf("device = %+v, mau device %d", device, id)
 	}
 

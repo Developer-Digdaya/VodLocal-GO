@@ -212,7 +212,7 @@ func (f *fixture) registerDevice(name, mac string) (string, int64) {
 	f.t.Helper()
 
 	env, rec := f.do(http.MethodPost, "/devices/register", "", map[string]any{
-		"name":        name,
+		"note":        name,
 		"seat_number": "7",
 		"mac_address": mac,
 		"app_version": "1.0.3",

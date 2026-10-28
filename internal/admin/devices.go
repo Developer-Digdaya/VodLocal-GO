@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// Nilai filter status perangkat (§10.4): halaman /devices hanya mengenal
+// Nilai filter status perangkat (10.4): halaman /devices hanya mengenal
 // perangkat aktif dan tidak aktif.
 const (
 	deviceStatusAll      = "all"
@@ -20,7 +20,7 @@ const (
 // deviceRow adalah satu baris devices untuk template.
 type deviceRow struct {
 	ID         int64
-	Name       string
+	Note       string
 	SeatNumber string
 	MACAddress string
 	IPAddress  string
@@ -48,7 +48,7 @@ type devicesData struct {
 	Devices    []deviceRow
 }
 
-// handleDevices melayani GET /devices (§10.4).
+// handleDevices melayani GET /devices (10.4).
 func (a *Admin) handleDevices(w http.ResponseWriter, r *http.Request) {
 	data, ok := a.devicesData(w, r, "")
 	if !ok {
@@ -102,7 +102,7 @@ func (a *Admin) devicesData(w http.ResponseWriter, r *http.Request, errMessage s
 
 	queryArgs := append(append([]any{}, args...), info.PerPage, info.offset())
 	rows, err := a.read.QueryContext(ctx, `
-SELECT id, COALESCE(name, ''), COALESCE(seat_number, ''), COALESCE(mac_address, ''), COALESCE(ip_address, ''),
+SELECT id, COALESCE(note, ''), COALESCE(seat_number, ''), COALESCE(mac_address, ''), COALESCE(ip_address, ''),
        is_active, COALESCE(last_seen_at, ''), created_at
 FROM devices`+where+`
 ORDER BY `+orderBy+`
@@ -119,7 +119,7 @@ LIMIT ? OFFSET ?`, queryArgs...)
 			device   deviceRow
 			isActive int
 		)
-		if err := rows.Scan(&device.ID, &device.Name, &device.SeatNumber, &device.MACAddress,
+		if err := rows.Scan(&device.ID, &device.Note, &device.SeatNumber, &device.MACAddress,
 			&device.IPAddress, &isActive, &device.LastSeenAt, &device.CreatedAt); err != nil {
 			a.internalError(w, r, err, "Gagal membaca daftar perangkat.")
 			return data, false
@@ -137,11 +137,11 @@ LIMIT ? OFFSET ?`, queryArgs...)
 }
 
 // deviceLabel adalah sebutan perangkat pada flash message. Nama boleh kosong
-// (kolom name nullable), jadi dipakai nomor kursi lalu "ID <id>" sebagai
+// (kolom note nullable), jadi dipakai nomor kursi lalu "ID <id>" sebagai
 // cadangan agar pesan tidak pernah berbunyi `Perangkat "" diaktifkan.`
 func deviceLabel(device *deviceRow) string {
-	if name := strings.TrimSpace(device.Name); name != "" {
-		return name
+	if note := strings.TrimSpace(device.Note); note != "" {
+		return note
 	}
 	if seat := strings.TrimSpace(device.SeatNumber); seat != "" {
 		return seat
@@ -151,14 +151,14 @@ func deviceLabel(device *deviceRow) string {
 
 // deviceOrderClause memetakan sort ke klausa ORDER BY yang diizinkan.
 //
-// name dan seat_number boleh NULL, jadi keduanya di-COALESCE agar urutan tidak
+// note dan seat_number boleh NULL, jadi keduanya di-COALESCE agar urutan tidak
 // bergantung pada posisi NULL di SQLite.
 func deviceOrderClause(sort string) (key, orderBy string) {
 	switch sort {
 	case "seat_number":
-		return "seat_number", `COALESCE(seat_number, '') ASC, COALESCE(name, '') ASC, id ASC`
-	case "name":
-		return "name", `COALESCE(name, '') ASC, id ASC`
+		return "seat_number", `COALESCE(seat_number, '') ASC, COALESCE(note, '') ASC, id ASC`
+	case "note":
+		return "note", `COALESCE(note, '') ASC, id ASC`
 	case "-created_at":
 		return "-created_at", "created_at DESC, id DESC"
 	default:
@@ -173,7 +173,7 @@ func deviceFilter(search, status string) (string, []any) {
 
 	if search != "" {
 		pattern := likeContains(search)
-		where = append(where, `(name LIKE ?`+likeEscapeClause+
+		where = append(where, `(note LIKE ?`+likeEscapeClause+
 			` OR COALESCE(seat_number, '') LIKE ?`+likeEscapeClause+
 			` OR COALESCE(mac_address, '') LIKE ?`+likeEscapeClause+
 			` OR COALESCE(ip_address, '') LIKE ?`+likeEscapeClause+`)`)
@@ -272,7 +272,7 @@ func (a *Admin) handleDeviceDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.log.Info("admin: perangkat dihapus",
-		"device_id", id, "name", device.Name, "username", a.sessionUsername(r))
+		"device_id", id, "note", device.Note, "username", a.sessionUsername(r))
 	a.flashTo(r, "success", fmt.Sprintf("Perangkat %q dihapus.", deviceLabel(device)))
 	http.Redirect(w, r, "/devices", http.StatusSeeOther)
 }
@@ -284,10 +284,10 @@ func (a *Admin) deviceByID(ctx context.Context, id int64) (*deviceRow, error) {
 		isActive int
 	)
 	err := a.read.QueryRowContext(ctx, `
-SELECT id, COALESCE(name, ''), COALESCE(seat_number, ''), COALESCE(mac_address, ''), COALESCE(ip_address, ''),
+SELECT id, COALESCE(note, ''), COALESCE(seat_number, ''), COALESCE(mac_address, ''), COALESCE(ip_address, ''),
        is_active, COALESCE(last_seen_at, ''), created_at
 FROM devices WHERE id = ?`, id,
-	).Scan(&device.ID, &device.Name, &device.SeatNumber, &device.MACAddress,
+	).Scan(&device.ID, &device.Note, &device.SeatNumber, &device.MACAddress,
 		&device.IPAddress, &isActive, &device.LastSeenAt, &device.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil

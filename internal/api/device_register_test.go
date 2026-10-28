@@ -14,7 +14,7 @@ import (
 type registerData struct {
 	Device struct {
 		ID         int64   `json:"id"`
-		Name       *string `json:"name"`
+		Note       *string `json:"note"`
 		SeatNumber *string `json:"seat_number"`
 		MACAddress string  `json:"mac_address"`
 	} `json:"device"`
@@ -26,7 +26,7 @@ type registerData struct {
 type conflictData struct {
 	DeviceID   int64   `json:"device_id"`
 	SeatNumber *string `json:"seat_number"`
-	Name       *string `json:"name"`
+	Note       *string `json:"note"`
 }
 
 // registerOK mendaftarkan perangkat dan memastikan respons 201 + code 0.
@@ -60,7 +60,7 @@ func TestDeviceRegisterFreeFormIdentity(t *testing.T) {
 	data := f.registerOK(map[string]any{
 		"mac_address": identity,
 		"seat_number": "4",
-		"name":        "Tablet Android",
+		"note":        "Tablet Android",
 		"app_version": "2.1.0",
 	})
 
@@ -98,14 +98,14 @@ func TestDeviceRegisterDuplicateWithoutReset(t *testing.T) {
 	first := f.registerOK(map[string]any{
 		"mac_address": "android-bentrok-01",
 		"seat_number": "3",
-		"name":        "Tablet Kursi 3",
+		"note":        "Tablet Kursi 3",
 	})
 
 	// Kapitalisasi berbeda harus tetap dianggap identitas yang sama.
 	env, rec := f.do(http.MethodPost, "/devices/register", "", map[string]any{
 		"mac_address": "ANDROID-Bentrok-01",
 		"seat_number": "8",
-		"name":        "Tablet Lain",
+		"note":        "Tablet Lain",
 	})
 	if rec.Code != http.StatusConflict || env.Code != response.CodeDeviceAlreadyRegistered {
 		t.Fatalf("duplikat: status/code = %d/%d, mau 409/%d (body=%s)",
@@ -123,8 +123,8 @@ func TestDeviceRegisterDuplicateWithoutReset(t *testing.T) {
 	if conflict.SeatNumber == nil || *conflict.SeatNumber != "3" {
 		t.Fatalf("data.seat_number = %v, mau \"3\"", conflict.SeatNumber)
 	}
-	if conflict.Name == nil || *conflict.Name != "Tablet Kursi 3" {
-		t.Fatalf("data.name = %v, mau \"Tablet Kursi 3\"", conflict.Name)
+	if conflict.Note == nil || *conflict.Note != "Tablet Kursi 3" {
+		t.Fatalf("data.name = %v, mau \"Tablet Kursi 3\"", conflict.Note)
 	}
 
 	// Penolakan tidak boleh menambah baris perangkat.
@@ -146,7 +146,7 @@ func TestDeviceRegisterDuplicateWithReset(t *testing.T) {
 	first := f.registerOK(map[string]any{
 		"mac_address": identity,
 		"seat_number": "3",
-		"name":        "Tablet Lama",
+		"note":        "Tablet Lama",
 	})
 
 	// Progres tonton yang wajib bertahan setelah reset.
@@ -166,7 +166,7 @@ func TestDeviceRegisterDuplicateWithReset(t *testing.T) {
 	env, rec = f.do(http.MethodPost, "/devices/register", "", map[string]any{
 		"mac_address": identity,
 		"seat_number": "9",
-		"name":        "Tablet Baru",
+		"note":        "Tablet Baru",
 		"is_reset":    true,
 	})
 	if rec.Code != http.StatusOK || env.Code != response.CodeSuccess {
@@ -188,8 +188,8 @@ func TestDeviceRegisterDuplicateWithReset(t *testing.T) {
 	if second.Device.SeatNumber == nil || *second.Device.SeatNumber != "9" {
 		t.Fatalf("device.seat_number = %v, mau \"9\"", second.Device.SeatNumber)
 	}
-	if second.Device.Name == nil || *second.Device.Name != "Tablet Baru" {
-		t.Fatalf("device.name = %v, mau \"Tablet Baru\"", second.Device.Name)
+	if second.Device.Note == nil || *second.Device.Note != "Tablet Baru" {
+		t.Fatalf("device.name = %v, mau \"Tablet Baru\"", second.Device.Note)
 	}
 
 	// Tetap satu baris perangkat, dan is_active kembali 1.
@@ -233,15 +233,15 @@ func TestDeviceRegisterOptionalName(t *testing.T) {
 
 	for _, body := range []map[string]any{
 		{"mac_address": "android-tanpa-nama", "seat_number": "6"},
-		{"mac_address": "android-nama-spasi", "seat_number": "6", "name": "   "},
+		{"mac_address": "android-nama-spasi", "seat_number": "6", "note": "   "},
 	} {
 		data := f.registerOK(body)
-		if data.Device.Name != nil {
-			t.Fatalf("device.name = %v, mau null", *data.Device.Name)
+		if data.Device.Note != nil {
+			t.Fatalf("device.name = %v, mau null", *data.Device.Note)
 		}
 
 		var stored sql.NullString
-		if err := f.db.QueryRow(`SELECT name FROM devices WHERE id = ?`, data.Device.ID).Scan(&stored); err != nil {
+		if err := f.db.QueryRow(`SELECT note FROM devices WHERE id = ?`, data.Device.ID).Scan(&stored); err != nil {
 			t.Fatalf("baca name: %v", err)
 		}
 		if stored.Valid {
@@ -310,8 +310,8 @@ func TestDeviceRegisterValidationLimits(t *testing.T) {
 		},
 		{
 			name:  "name terlalu panjang",
-			body:  map[string]any{"mac_address": "android-panjang", "seat_number": "1", "name": strings.Repeat("c", 101)},
-			field: "body.name",
+			body:  map[string]any{"mac_address": "android-panjang", "seat_number": "1", "note": strings.Repeat("c", 101)},
+			field: "body.note",
 			pesan: "maksimal 100 karakter",
 		},
 		{

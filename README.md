@@ -336,11 +336,11 @@ Semua response JSON memakai envelope:
 
 - `mac_address` adalah **identitas perangkat**. Isinya boleh MAC maupun **device ID** apa
   pun (mis. `android-9f3c1a7b`); server **tidak memvalidasi format MAC**.
-- `seat_number` wajib diisi. `name` **tidak perlu dikirim** klien; bila tetap dikirim,
-  nilainya opsional (maks 100 karakter) dan hanya disimpan sebagai nama perangkat.
+- `seat_number` wajib diisi. `note` opsional (maks 100 karakter) dan dipakai sebagai
+  catatan bebas perangkat.
 - `is_reset` opsional dengan default `false`. Bila `false` dan identitas sudah dipakai,
   server membalas `409` kode `2003` dengan `data` berisi `device_id`, `seat_number`, dan
-  `name` perangkat yang memakai identitas itu, sehingga aplikasi bisa menampilkan
+  `note` perangkat yang memakai identitas itu, sehingga aplikasi bisa menampilkan
   “sudah digunakan di kursi X”.
 - Bila `is_reset: true`, server menimpa perangkat lama: token baru, `id` tetap, riwayat
   tonton dipertahankan, dan respons sukses memuat `reset: true`.
@@ -351,6 +351,7 @@ Body registrasi:
 {
   "mac_address": "android-9f3c1a7b",
   "seat_number": "12A",
+  "note": "Tablet 12A",
   "is_reset": false
 }
 ```
@@ -364,7 +365,7 @@ Respons bila identitas sudah dipakai:
   "data": {
     "device_id": 17,
     "seat_number": "12A",
-    "name": "Tablet 12A"
+    "note": "Tablet 12A"
   },
   "errors": []
 }

@@ -14,7 +14,7 @@ import (
 // DeviceFrom.
 type Device struct {
 	ID         int64
-	Name       string
+	Note       string
 	SeatNumber string
 }
 
@@ -59,7 +59,7 @@ func DeviceFrom(ctx context.Context) (Device, bool) {
 // Header yang hilang atau tidak berformat "Bearer <token>" dijawab
 // 401/CodeUnauthorized, token milik perangkat nonaktif dijawab
 // 403/CodeDeviceDisabled, dan kegagalan lain dijawab 500/CodeInternalError.
-// Semua kegagalan memakai envelope standar (docs/api-spec.md §2).
+// Semua kegagalan memakai envelope standar (docs/api-spec.md 2).
 func RequireDevice(a DeviceAuthenticator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

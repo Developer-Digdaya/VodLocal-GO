@@ -236,33 +236,33 @@ func TestLoadMigrations(t *testing.T) {
 	}
 }
 
-// 9. Migrasi 0006: devices.name boleh NULL dan identitas unik
+// 9. Migrasi 0006 + 0007: devices.note boleh NULL dan identitas unik
 // case-insensitive.
 func TestDevicesIdentitySchema(t *testing.T) {
 	s := newMigratedStore(t)
 	ctx := context.Background()
 
-	// name tidak lagi NOT NULL.
+	// note tidak lagi NOT NULL.
 	var notNull int
 	if err := s.Write().QueryRowContext(ctx,
-		`SELECT "notnull" FROM pragma_table_info('devices') WHERE name = 'name'`,
+		`SELECT "notnull" FROM pragma_table_info('devices') WHERE name = 'note'`,
 	).Scan(&notNull); err != nil {
-		t.Fatalf("baca pragma_table_info(devices).name: %v", err)
+		t.Fatalf("baca pragma_table_info(devices).note: %v", err)
 	}
 	if notNull != 0 {
-		t.Errorf("devices.name NOT NULL = %d, ingin 0 (nama opsional)", notNull)
+		t.Errorf("devices.note NOT NULL = %d, ingin 0 (catatan opsional)", notNull)
 	}
 
-	// name kosong boleh, dan tersimpan sebagai NULL.
+	// note kosong boleh, dan tersimpan sebagai NULL.
 	if _, err := s.Write().ExecContext(ctx,
-		`INSERT INTO devices (name, seat_number, mac_address, token_hash) VALUES (NULL, '1', 'android-a1b2-c3d4', 'hash-1')`,
+		`INSERT INTO devices (note, seat_number, mac_address, token_hash) VALUES (NULL, '1', 'android-a1b2-c3d4', 'hash-1')`,
 	); err != nil {
-		t.Fatalf("insert device tanpa nama error: %v", err)
+		t.Fatalf("insert device tanpa catatan error: %v", err)
 	}
 
 	// Identitas unik tanpa memandang kapitalisasi.
 	_, err := s.Write().ExecContext(ctx,
-		`INSERT INTO devices (name, seat_number, mac_address, token_hash) VALUES ('Lain', '2', 'ANDROID-A1B2-C3D4', 'hash-2')`,
+		`INSERT INTO devices (note, seat_number, mac_address, token_hash) VALUES ('Lain', '2', 'ANDROID-A1B2-C3D4', 'hash-2')`,
 	)
 	if err == nil {
 		t.Fatal("insert identitas beda kapitalisasi tidak error, ingin UNIQUE constraint failed")
@@ -350,27 +350,27 @@ func TestMigrateDevicesRebuildKeepsProgress(t *testing.T) {
 	}
 
 	var (
-		name       sql.NullString
+		note       sql.NullString
 		macAddress string
 	)
 	if err := s.Write().QueryRowContext(ctx,
-		`SELECT name, mac_address FROM devices WHERE id = 7`).Scan(&name, &macAddress); err != nil {
+		`SELECT note, mac_address FROM devices WHERE id = 7`).Scan(&note, &macAddress); err != nil {
 		t.Fatalf("baca device 7: %v", err)
 	}
-	if !name.Valid || name.String != "Tablet Lama" {
-		t.Errorf("name device 7 = %v, ingin \"Tablet Lama\"", name)
+	if !note.Valid || note.String != "Tablet Lama" {
+		t.Errorf("note device 7 = %v, ingin \"Tablet Lama\"", note)
 	}
 	if macAddress != "aa-bb-cc-dd-ee-07" {
 		t.Errorf("mac_address device 7 = %q, ingin tidak berubah", macAddress)
 	}
 
-	// Nama kosong dari skema lama menjadi NULL.
+	// Catatan kosong dari skema lama menjadi NULL.
 	if err := s.Write().QueryRowContext(ctx,
-		`SELECT name FROM devices WHERE id = 8`).Scan(&name); err != nil {
+		`SELECT note FROM devices WHERE id = 8`).Scan(&note); err != nil {
 		t.Fatalf("baca device 8: %v", err)
 	}
-	if name.Valid {
-		t.Errorf("name device 8 = %q, ingin NULL", name.String)
+	if note.Valid {
+		t.Errorf("note device 8 = %q, ingin NULL", note.String)
 	}
 
 	// Progres tonton tidak boleh ikut terhapus oleh rebuild tabel.

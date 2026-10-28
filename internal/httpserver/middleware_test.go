@@ -77,7 +77,7 @@ func TestRequireDeviceRejectsMissingHeader(t *testing.T) {
 
 func TestRequireDevicePassesDevice(t *testing.T) {
 	devices := &stubDevices{devices: map[string]httpserver.Device{
-		"mc_valid": {ID: 12, Name: "Tablet Kursi 12", SeatNumber: "12A"},
+		"mc_valid": {ID: 12, Note: "Tablet Kursi 12", SeatNumber: "12A"},
 	}}
 	var got httpserver.Device
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +98,7 @@ func TestRequireDevicePassesDevice(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204", rec.Code)
 	}
-	want := httpserver.Device{ID: 12, Name: "Tablet Kursi 12", SeatNumber: "12A"}
+	want := httpserver.Device{ID: 12, Note: "Tablet Kursi 12", SeatNumber: "12A"}
 	if got != want {
 		t.Errorf("device = %+v, want %+v", got, want)
 	}

@@ -73,7 +73,7 @@
       "post": {
         "tags": ["Device"],
         "summary": "Registrasi tablet",
-        "description": "Mendaftarkan tablet dan mengembalikan token Bearer. Token hanya ditampilkan sekali. `mac_address` adalah identitas perangkat: boleh MAC address atau device ID apa pun, dan server tidak memvalidasi format MAC. Bila identitas itu sudah dipakai: dengan `is_reset=false` (default) registrasi ditolak `409` kode `2003` beserta data perangkat lama; dengan `is_reset=true` perangkat ditimpa (`200`, token baru, `id` tetap, riwayat tonton dipertahankan). Catatan: field `name` tidak perlu dikirim klien; bila tetap dikirim nilainya opsional dan hanya disimpan sebagai nama perangkat.",
+        "description": "Mendaftarkan tablet dan mengembalikan token Bearer. Token hanya ditampilkan sekali. `mac_address` adalah identitas perangkat: boleh MAC address atau device ID apa pun, dan server tidak memvalidasi format MAC. Bila identitas itu sudah dipakai: dengan `is_reset=false` (default) registrasi ditolak `409` kode `2003` beserta data perangkat lama; dengan `is_reset=true` perangkat ditimpa (`200`, token baru, `id` tetap, riwayat tonton dipertahankan). Field `note` opsional dan dipakai sebagai catatan bebas perangkat.",
         "requestBody": {
           "required": true,
           "content": {
@@ -82,6 +82,7 @@
               "example": {
                 "mac_address": "a1b2c3d4e5f6",
                 "seat_number": "1",
+                "note": "Tablet 1",
                 "app_version": "1.0.3",
                 "is_reset": false
               }
@@ -100,7 +101,7 @@
                   "data": {
                     "device": {
                       "id": 12,
-                      "name": "Kursi 1",
+                      "note": "Kursi 1",
                       "seat_number": "1",
                       "mac_address": "a1b2c3d4e5f6"
                     },
@@ -123,7 +124,7 @@
                   "data": {
                     "device": {
                       "id": 12,
-                      "name": "Kursi 1",
+                      "note": "Kursi 1",
                       "seat_number": "1",
                       "mac_address": "a1b2c3d4e5f6"
                     },
@@ -172,7 +173,7 @@
                   "msg": "Berhasil",
                   "data": {
                     "id": 12,
-                    "name": "Tablet Kursi 12",
+                    "note": "Tablet Kursi 12",
                     "seat_number": "12",
                     "is_active": true,
                     "last_seen_at": "2026-10-21T04:30:00Z",
@@ -814,7 +815,7 @@
             "example": {
               "code": 2003,
               "msg": "Perangkat sudah terdaftar",
-              "data": { "device_id": 7, "seat_number": "12", "name": "Kursi 12" },
+              "data": { "device_id": 7, "seat_number": "12", "note": "Kursi 12" },
               "errors": []
             }
           }
@@ -946,6 +947,13 @@
             "example": "a1b2c3d4e5f6"
           },
           "seat_number": { "type": "string", "minLength": 1, "maxLength": 20, "example": "1" },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 100,
+            "description": "Catatan bebas opsional untuk perangkat ini.",
+            "example": "Tablet 1"
+          },
           "app_version": { "type": "string", "maxLength": 20, "example": "1.0.3" },
           "is_reset": {
             "type": "boolean",
@@ -959,7 +967,7 @@
         "type": "object",
         "properties": {
           "id": { "type": "integer", "format": "int64", "example": 12 },
-          "name": { "type": "string", "nullable": true, "example": "Kursi 1" },
+          "note": { "type": "string", "nullable": true, "example": "Kursi 1" },
           "seat_number": { "type": "string", "nullable": true, "example": "1" },
           "mac_address": { "type": "string", "example": "a1b2c3d4e5f6" }
         }
@@ -992,7 +1000,7 @@
         "properties": {
           "device_id": { "type": "integer", "format": "int64", "example": 7 },
           "seat_number": { "type": "string", "nullable": true, "example": "12" },
-          "name": { "type": "string", "nullable": true, "example": "Kursi 12" }
+          "note": { "type": "string", "nullable": true, "example": "Kursi 12" }
         }
       },
       "DeviceConflictResponse": {
@@ -1013,7 +1021,7 @@
         "type": "object",
         "properties": {
           "id": { "type": "integer", "format": "int64", "example": 12 },
-          "name": { "type": "string", "example": "Tablet Kursi 12" },
+          "note": { "type": "string", "example": "Tablet Kursi 12" },
           "seat_number": { "type": "string", "nullable": true, "example": "12" },
           "is_active": { "type": "boolean", "example": true },
           "last_seen_at": { "type": "string", "format": "date-time", "example": "2026-10-21T04:30:00Z" },

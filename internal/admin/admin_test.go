@@ -289,7 +289,7 @@ func TestDeviceActions(t *testing.T) {
 	}
 
 	// Filter dan pencarian tetap berfungsi (status: semua/aktif/tidak aktif).
-	list := f.get("/devices?q=Kursi&status=active&sort=name")
+	list := f.get("/devices?q=Kursi&status=active&sort=note")
 	if list.Code != http.StatusOK {
 		t.Fatalf("GET /devices?q: status = %d", list.Code)
 	}
@@ -382,7 +382,7 @@ func TestDevicesActiveInactive(t *testing.T) {
 		}
 	}
 
-	// Kolom Catatan memakai isi kolom name apa adanya.
+	// Kolom Catatan memakai isi kolom note apa adanya.
 	if got := deviceNameCell(t, body, 1); got != "Tablet Kursi 12" {
 		t.Fatalf("sel nama perangkat 1 = %q, mau %q", got, "Tablet Kursi 12")
 	}
@@ -406,14 +406,14 @@ func TestDevicesActiveInactive(t *testing.T) {
 		t.Fatalf("status tak dikenal tidak menampilkan semua perangkat (body=%s)", unknownBody)
 	}
 
-	// Perangkat tanpa nama (kolom name boleh NULL): kolom Nama menampilkan "—"
+	// Perangkat tanpa catatan (kolom note boleh NULL): kolom Nama menampilkan "—"
 	// dan flash memakai nomor kursi, bukan nama kosong.
-	f.exec(`INSERT INTO devices (id, name, seat_number, mac_address, ip_address, token_hash,
+	f.exec(`INSERT INTO devices (id, note, seat_number, mac_address, ip_address, token_hash,
 	                             is_active, created_at)
 	        VALUES (3, NULL, '7', 'AA:BB:CC:DD:EE:73', '192.0.2.73', ?, 0, '2026-10-01T00:00:00Z')`,
 		hashToken("mc_token-lama-perangkat-73"))
 	// Perangkat tanpa nama dan tanpa kursi: flash memakai "ID <id>".
-	f.exec(`INSERT INTO devices (id, name, token_hash, is_active, created_at)
+	f.exec(`INSERT INTO devices (id, note, token_hash, is_active, created_at)
 	        VALUES (4, NULL, ?, 0, '2026-10-01T00:00:00Z')`,
 		hashToken("mc_token-lama-perangkat-74"))
 

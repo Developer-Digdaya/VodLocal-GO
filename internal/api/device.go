@@ -22,12 +22,12 @@ import (
 const (
 	// tokenPrefix menandai token device agar mudah dikenali di log/dukungan.
 	tokenPrefix = "mc_"
-	// tokenRandomBytes adalah jumlah byte acak di dalam token (§6.1).
+	// tokenRandomBytes adalah jumlah byte acak di dalam token (6.1).
 	tokenRandomBytes = 32
 
-	// Batas panjang field registrasi (§6.1).
+	// Batas panjang field registrasi (6.1).
 	macAddressMax = 128
-	deviceNameMax = 100
+	deviceNoteMax = 100
 	seatNumberMax = 20
 	appVersionMax = 20
 )
@@ -72,9 +72,9 @@ func (a *Authenticator) Authenticate(ctx context.Context, token string) (httpser
 		active int
 	)
 	err := a.db.QueryRowContext(ctx,
-		`SELECT id, COALESCE(name, ''), COALESCE(seat_number, ''), is_active FROM devices WHERE token_hash = ?`,
+		`SELECT id, COALESCE(note, ''), COALESCE(seat_number, ''), is_active FROM devices WHERE token_hash = ?`,
 		hashDeviceToken(token),
-	).Scan(&device.ID, &device.Name, &device.SeatNumber, &active)
+	).Scan(&device.ID, &device.Note, &device.SeatNumber, &active)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return httpserver.Device{}, httpserver.ErrUnauthorized
@@ -106,15 +106,15 @@ func (a *Authenticator) Authenticate(ctx context.Context, token string) (httpser
 type registerRequest struct {
 	MACAddress string `json:"mac_address"`
 	SeatNumber string `json:"seat_number"`
-	Name       string `json:"name"`
+	Note       string `json:"note"`
 	AppVersion string `json:"app_version"`
 	IsReset    bool   `json:"is_reset"`
 }
 
-// deviceSummary adalah bentuk device pada response registrasi (§6.1).
+// deviceSummary adalah bentuk device pada response registrasi (6.1).
 type deviceSummary struct {
 	ID         int64  `json:"id"`
-	Name       any    `json:"name"`
+	Note       any    `json:"note"`
 	SeatNumber any    `json:"seat_number"`
 	MACAddress string `json:"mac_address"`
 }
@@ -133,21 +133,21 @@ type registerResponse struct {
 type registeredDevice struct {
 	DeviceID   int64 `json:"device_id"`
 	SeatNumber any   `json:"seat_number"`
-	Name       any   `json:"name"`
+	Note       any   `json:"note"`
 }
 
 // storedDevice adalah identitas minimal baris devices yang sudah ada.
 type storedDevice struct {
 	ID         int64
-	Name       string
+	Note       string
 	SeatNumber string
 	MACAddress string
 }
 
-// deviceDetail adalah bentuk GET /devices/me (§6.2).
+// deviceDetail adalah bentuk GET /devices/me (6.2).
 type deviceDetail struct {
 	ID         int64  `json:"id"`
-	Name       string `json:"name"`
+	Note       string `json:"note"`
 	SeatNumber any    `json:"seat_number"`
 	IsActive   bool   `json:"is_active"`
 	LastSeenAt any    `json:"last_seen_at"`
@@ -174,7 +174,7 @@ func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 
 	mac := strings.TrimSpace(req.MACAddress)
 	seatNumber := strings.TrimSpace(req.SeatNumber)
-	name := strings.TrimSpace(req.Name)
+	note := strings.TrimSpace(req.Note)
 	appVersion := strings.TrimSpace(req.AppVersion)
 
 	fields := map[string]string{}
@@ -190,8 +190,8 @@ func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 	case utf8.RuneCountInString(seatNumber) > seatNumberMax:
 		fields["body.seat_number"] = "maksimal 20 karakter"
 	}
-	if utf8.RuneCountInString(name) > deviceNameMax {
-		fields["body.name"] = "maksimal 100 karakter"
+	if utf8.RuneCountInString(note) > deviceNoteMax {
+		fields["body.note"] = "maksimal 100 karakter"
 	}
 	if utf8.RuneCountInString(appVersion) > appVersionMax {
 		fields["body.app_version"] = "maksimal 20 karakter"
@@ -211,7 +211,7 @@ func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 		response.ErrorData(w, response.CodeDeviceAlreadyRegistered, registeredDevice{
 			DeviceID:   existing.ID,
 			SeatNumber: nullText(existing.SeatNumber),
-			Name:       nullText(existing.Name),
+			Note:       nullText(existing.Note),
 		}, nil)
 		return
 	}
@@ -229,9 +229,9 @@ func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 	if found {
 		if _, err := s.write.ExecContext(ctx,
 			`UPDATE devices
-			    SET name = ?, seat_number = ?, token_hash = ?, is_active = 1, last_seen_at = ?
+			    SET note = ?, seat_number = ?, token_hash = ?, is_active = 1, last_seen_at = ?
 			  WHERE id = ?`,
-			nullIfBlank(name), nullIfBlank(seatNumber), hashDeviceToken(token), now, existing.ID,
+			nullIfBlank(note), nullIfBlank(seatNumber), hashDeviceToken(token), now, existing.ID,
 		); err != nil {
 			s.internalError(w, r, err)
 			return
@@ -240,7 +240,7 @@ func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 		response.Success(w, registerResponse{
 			Device: deviceSummary{
 				ID:         existing.ID,
-				Name:       nullText(name),
+				Note:       nullText(note),
 				SeatNumber: nullText(seatNumber),
 				MACAddress: existing.MACAddress,
 			},
@@ -251,9 +251,9 @@ func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res, err := s.write.ExecContext(ctx,
-		`INSERT INTO devices (name, seat_number, mac_address, token_hash, is_active, last_seen_at, created_at)
+		`INSERT INTO devices (note, seat_number, mac_address, token_hash, is_active, last_seen_at, created_at)
 		 VALUES (?, ?, ?, ?, 1, ?, ?)`,
-		nullIfBlank(name), nullIfBlank(seatNumber), mac, hashDeviceToken(token), now, now,
+		nullIfBlank(note), nullIfBlank(seatNumber), mac, hashDeviceToken(token), now, now,
 	)
 	if err != nil {
 		// Race: baris lain menyisipkan identitas yang sama di antara SELECT dan
@@ -268,7 +268,7 @@ func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 				response.ErrorData(w, response.CodeDeviceAlreadyRegistered, registeredDevice{
 					DeviceID:   existing.ID,
 					SeatNumber: nullText(existing.SeatNumber),
-					Name:       nullText(existing.Name),
+					Note:       nullText(existing.Note),
 				}, nil)
 				return
 			}
@@ -286,7 +286,7 @@ func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 	response.Created(w, registerResponse{
 		Device: deviceSummary{
 			ID:         id,
-			Name:       nullText(name),
+			Note:       nullText(note),
 			SeatNumber: nullText(seatNumber),
 			MACAddress: mac,
 		},
@@ -300,11 +300,11 @@ func (s *server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 func (s *server) findDeviceByIdentity(ctx context.Context, mac string) (storedDevice, bool, error) {
 	var device storedDevice
 	err := s.write.QueryRowContext(ctx,
-		`SELECT id, COALESCE(name, ''), COALESCE(seat_number, ''), COALESCE(mac_address, '')
+		`SELECT id, COALESCE(note, ''), COALESCE(seat_number, ''), COALESCE(mac_address, '')
 		   FROM devices
 		  WHERE mac_address = ? COLLATE NOCASE`,
 		mac,
-	).Scan(&device.ID, &device.Name, &device.SeatNumber, &device.MACAddress)
+	).Scan(&device.ID, &device.Note, &device.SeatNumber, &device.MACAddress)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return storedDevice{}, false, nil
@@ -324,16 +324,16 @@ func (s *server) handleDeviceMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		name       string
+		note       string
 		seatNumber sql.NullString
 		active     int
 		lastSeen   sql.NullString
 		createdAt  sql.NullString
 	)
 	err := s.read.QueryRowContext(r.Context(),
-		`SELECT COALESCE(name, ''), seat_number, is_active, last_seen_at, created_at FROM devices WHERE id = ?`,
+		`SELECT COALESCE(note, ''), seat_number, is_active, last_seen_at, created_at FROM devices WHERE id = ?`,
 		device.ID,
-	).Scan(&name, &seatNumber, &active, &lastSeen, &createdAt)
+	).Scan(&note, &seatNumber, &active, &lastSeen, &createdAt)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		response.Error(w, response.CodeDeviceNotFound, nil)
@@ -345,7 +345,7 @@ func (s *server) handleDeviceMe(w http.ResponseWriter, r *http.Request) {
 
 	response.Success(w, deviceDetail{
 		ID:         device.ID,
-		Name:       name,
+		Note:       note,
 		SeatNumber: nullString(seatNumber),
 		IsActive:   active == 1,
 		LastSeenAt: isoTime(lastSeen.String),
