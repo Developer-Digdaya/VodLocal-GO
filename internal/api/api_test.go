@@ -349,6 +349,48 @@ func TestTitlesList(t *testing.T) {
 	}
 }
 
+// TestTitlesKindShort memastikan judul Dramahits bisa disaring lewat kind=short
+// dan nilai itu tetap muncul pada detail judul.
+func TestTitlesKindShort(t *testing.T) {
+	f := newFixture(t, nil)
+	token, _ := f.registerDevice("Tablet Kursi 14", "AA:BB:CC:DD:EE:14")
+
+	f.seedMediaTitle(mediaTitleSeed{
+		ID:         20,
+		PlayableID: 9120,
+		Kind:       "short",
+		Title:      "Drama Pendek",
+		Slug:       "drama-pendek",
+	})
+
+	env, rec := f.do(http.MethodGet, "/titles?kind=short", token, nil)
+	if rec.Code != http.StatusOK || env.Code != response.CodeSuccess {
+		t.Fatalf("kind=short: status/code = %d/%d, mau 200/0 (body=%s)", rec.Code, env.Code, rec.Body.String())
+	}
+
+	var list titlesData
+	f.decode(env, &list)
+	if got := list.ids(); len(got) != 1 || got[0] != 20 {
+		t.Fatalf("kind=short: items = %v, mau [20]", got)
+	}
+	if list.Items[0].Kind != "short" {
+		t.Fatalf("kind = %q, mau short", list.Items[0].Kind)
+	}
+
+	env, rec = f.do(http.MethodGet, "/titles/20", token, nil)
+	if rec.Code != http.StatusOK || env.Code != response.CodeSuccess {
+		t.Fatalf("detail: status/code = %d/%d, mau 200/0 (body=%s)", rec.Code, env.Code, rec.Body.String())
+	}
+
+	var detail struct {
+		Kind string `json:"kind"`
+	}
+	f.decode(env, &detail)
+	if detail.Kind != "short" {
+		t.Fatalf("detail kind = %q, mau short", detail.Kind)
+	}
+}
+
 // TestTitleDetail memeriksa detail judul (seasons, first_playable_id) dan 404
 // untuk ID yang tidak ada (tugas uji #4).
 func TestTitleDetail(t *testing.T) {

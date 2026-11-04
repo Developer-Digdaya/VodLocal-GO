@@ -488,8 +488,8 @@ func TestIngestHappyPath(t *testing.T) {
 	if got := queryString(t, env.store.Read(), `SELECT external_id FROM titles`); got != "series-uji" {
 		t.Errorf("titles.external_id = %q, mau series-uji", got)
 	}
-	if got := queryString(t, env.store.Read(), `SELECT kind FROM titles`); got != "series" {
-		t.Errorf("titles.kind = %q, mau series", got)
+	if got := queryString(t, env.store.Read(), `SELECT kind FROM titles`); got != "short" {
+		t.Errorf("titles.kind = %q, mau short", got)
 	}
 	if got := queryString(t, env.store.Read(), `SELECT title FROM titles`); got != "Series Uji" {
 		t.Errorf("titles.title = %q, mau Series Uji", got)

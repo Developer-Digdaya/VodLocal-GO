@@ -236,14 +236,14 @@
                       {
                         "id": 12,
                         "provider": "dramahits",
-                        "kind": "series",
+                        "kind": "short",
                         "title": "Ketika Cinta Menjadi Benci",
                         "slug": "ketika-cinta-menjadi-benci",
                         "synopsis": "Kesalahpahaman di hari pernikahan...",
                         "release_year": 2025,
                         "content_rating": "Dewasa 17+",
                         "language": "id",
-                        "poster_url": "/media/gen-000042/dramahits/series/9d1c-4f5a/poster.jpg",
+                        "poster_url": "/media/gen-000042/dramahits/short/9d1c-4f5a/poster.jpg",
                         "backdrop_url": null,
                         "duration_seconds": null,
                         "episode_count": 80,
@@ -280,7 +280,7 @@
                   "msg": "Berhasil",
                   "data": {
                     "id": 12,
-                    "kind": "series",
+                    "kind": "short",
                     "episode_count": 80,
                     "first_playable_id": 9001,
                     "seasons": [{ "season_number": 1, "episode_count": 80 }]
@@ -380,10 +380,10 @@
                     "titles": [
                       {
                         "id": 12,
-                        "kind": "series",
+                        "kind": "short",
                         "title": "Ketika Cinta Menjadi Benci",
                         "release_year": 2025,
-                        "poster_url": "/media/gen-000042/dramahits/series/9d1c-4f5a/poster.jpg",
+                        "poster_url": "/media/gen-000042/dramahits/short/9d1c-4f5a/poster.jpg",
                         "episode_count": 80,
                         "match": "title"
                       }
@@ -535,7 +535,7 @@
                         "title_id": 12,
                         "title": "Ketika Cinta Menjadi Benci",
                         "episode": { "season_number": 1, "episode_number": 3 },
-                        "poster_url": "/media/gen-000042/dramahits/series/9d1c-4f5a/poster.jpg",
+                        "poster_url": "/media/gen-000042/dramahits/short/9d1c-4f5a/poster.jpg",
                         "position_seconds": 42,
                         "duration_seconds": 138,
                         "progress_percent": 30,
@@ -634,7 +634,7 @@
                     "title_id": 12,
                     "title": "Ketika Cinta Menjadi Benci",
                     "episode": { "season_number": 1, "episode_number": 3 },
-                    "poster_url": "/media/gen-000042/dramahits/series/9d1c-4f5a/poster.jpg",
+                    "poster_url": "/media/gen-000042/dramahits/short/9d1c-4f5a/poster.jpg",
                     "position_seconds": 42,
                     "duration_seconds": 138,
                     "progress_percent": 30,
@@ -743,7 +743,7 @@
         "name": "kind",
         "in": "query",
         "required": false,
-        "schema": { "type": "string", "enum": ["movie", "series"] },
+        "schema": { "type": "string", "enum": ["movie", "series", "short"] },
         "example": "series"
       },
       "Sort": {
@@ -1039,14 +1039,14 @@
         "properties": {
           "id": { "type": "integer", "format": "int64", "example": 12 },
           "provider": { "type": "string", "example": "dramahits" },
-          "kind": { "type": "string", "enum": ["movie", "series"], "example": "series" },
+          "kind": { "type": "string", "enum": ["movie", "series", "short"], "example": "short" },
           "title": { "type": "string", "example": "Ketika Cinta Menjadi Benci" },
           "slug": { "type": "string", "example": "ketika-cinta-menjadi-benci" },
           "synopsis": { "type": "string", "nullable": true },
           "release_year": { "type": "integer", "nullable": true, "example": 2025 },
           "content_rating": { "type": "string", "nullable": true, "example": "Dewasa 17+" },
           "language": { "type": "string", "nullable": true, "example": "id" },
-          "poster_url": { "type": "string", "nullable": true, "example": "/media/gen-000042/dramahits/series/9d1c-4f5a/poster.jpg" },
+          "poster_url": { "type": "string", "nullable": true, "example": "/media/gen-000042/dramahits/short/9d1c-4f5a/poster.jpg" },
           "backdrop_url": { "type": "string", "nullable": true, "example": null },
           "duration_seconds": { "type": "integer", "nullable": true, "example": null },
           "episode_count": { "type": "integer", "example": 80 },
@@ -1070,7 +1070,7 @@
         "type": "object",
         "properties": {
           "id": { "type": "integer", "format": "int64", "example": 12 },
-          "kind": { "type": "string", "example": "series" },
+          "kind": { "type": "string", "enum": ["movie", "series", "short"], "example": "short" },
           "episode_count": { "type": "integer", "example": 80 },
           "first_playable_id": { "type": "integer", "format": "int64", "nullable": true, "example": 9001 },
           "seasons": {
@@ -1213,7 +1213,7 @@
               "episode_number": { "type": "integer", "example": 3 }
             }
           },
-          "poster_url": { "type": "string", "nullable": true, "example": "/media/gen-000042/dramahits/series/9d1c-4f5a/poster.jpg" },
+          "poster_url": { "type": "string", "nullable": true, "example": "/media/gen-000042/dramahits/short/9d1c-4f5a/poster.jpg" },
           "position_seconds": { "type": "integer", "example": 42 },
           "duration_seconds": { "type": "integer", "nullable": true, "example": 138 },
           "progress_percent": { "type": "integer", "example": 30 },

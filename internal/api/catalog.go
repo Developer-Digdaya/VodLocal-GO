@@ -184,8 +184,8 @@ func (s *server) handleTitles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	kind := strings.TrimSpace(q.Get("kind"))
-	if kind != "" && kind != "movie" && kind != "series" {
-		fields["kind"] = "harus movie atau series"
+	if kind != "" && kind != "movie" && kind != "series" && kind != "short" {
+		fields["kind"] = "harus movie, series, atau short"
 	}
 
 	order, okOrder := titleSortOrders[strings.TrimSpace(q.Get("sort"))]
@@ -571,8 +571,8 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	kind := strings.TrimSpace(q.Get("kind"))
-	if kind != "" && kind != "movie" && kind != "series" {
-		fields["kind"] = "harus movie atau series"
+	if kind != "" && kind != "movie" && kind != "series" && kind != "short" {
+		fields["kind"] = "harus movie, series, atau short"
 	}
 
 	if s.validationFailed(w, fields) {

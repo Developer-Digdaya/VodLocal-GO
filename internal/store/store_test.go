@@ -283,7 +283,84 @@ func TestDevicesIdentitySchema(t *testing.T) {
 	}
 }
 
-// 10. Rebuild devices pada migrasi 0006 tidak menghapus playback_progress.
+// 10. Migrasi 0008 mengganti kind Dramahits menjadi short dan rebuild tabel
+// tidak menghapus episode/playable yang merujuk judul.
+func TestMigrateTitlesKindShort(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("loadMigrations() error: %v", err)
+	}
+
+	conn, err := s.Write().Conn(ctx)
+	if err != nil {
+		t.Fatalf("ambil koneksi migrasi: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+		t.Fatalf("pragma foreign_keys=OFF: %v", err)
+	}
+	for _, m := range migrations {
+		if m.version >= 8 {
+			continue
+		}
+		if err := applyMigration(ctx, conn, m); err != nil {
+			t.Fatalf("applyMigration(%s) error: %v", m.name, err)
+		}
+	}
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys=ON"); err != nil {
+		t.Fatalf("pragma foreign_keys=ON: %v", err)
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatalf("tutup koneksi migrasi: %v", err)
+	}
+
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := s.Write().ExecContext(ctx, query, args...); err != nil {
+			t.Fatalf("seed %q error: %v", query, err)
+		}
+	}
+	exec(`INSERT INTO providers (id, code, name) VALUES (1, 'dramahits', 'Dramahits')`)
+	exec(`INSERT INTO titles (id, provider_id, external_id, kind, title, slug)
+	      VALUES (1, 1, 'ext-1', 'series', 'Drama Pendek', 'drama-pendek')`)
+	exec(`INSERT INTO episodes (id, title_id, external_id, season_number, episode_number)
+	      VALUES (1, 1, 'ep-1', 1, 1)`)
+	exec(`INSERT INTO playables (id, title_id, episode_id) VALUES (1, 1, 1)`)
+
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error: %v", err)
+	}
+
+	var kind string
+	if err := s.Write().QueryRowContext(ctx,
+		`SELECT kind FROM titles WHERE id = 1`).Scan(&kind); err != nil {
+		t.Fatalf("baca titles.kind: %v", err)
+	}
+	if kind != "short" {
+		t.Errorf("titles.kind = %q, ingin short", kind)
+	}
+
+	if n := scalarInt(t, s, `SELECT COUNT(*) FROM episodes WHERE title_id = 1`); n != 1 {
+		t.Errorf("episode tersisa = %d, ingin 1", n)
+	}
+	if n := scalarInt(t, s, `SELECT COUNT(*) FROM playables WHERE title_id = 1`); n != 1 {
+		t.Errorf("playable tersisa = %d, ingin 1", n)
+	}
+
+	// CHECK baru menerima short dan tetap menolak nilai asing.
+	exec(`INSERT INTO titles (id, provider_id, external_id, kind, title, slug)
+	      VALUES (2, 1, 'ext-2', 'short', 'Short Lain', 'short-lain')`)
+	if _, err := s.Write().ExecContext(ctx,
+		`INSERT INTO titles (provider_id, external_id, kind, title, slug)
+		 VALUES (1, 'ext-3', 'podcast', 'Salah', 'salah')`,
+	); err == nil {
+		t.Error("kind 'podcast' tidak ditolak, ingin CHECK constraint failed")
+	}
+}
+
+// 11. Rebuild devices pada migrasi 0006 tidak menghapus playback_progress.
 func TestMigrateDevicesRebuildKeepsProgress(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)

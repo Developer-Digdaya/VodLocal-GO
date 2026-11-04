@@ -1671,10 +1671,14 @@ func normalizeCategory(category string) string {
 
 // titleKind memetakan kategori media ke nilai titles.kind.
 func titleKind(category string) string {
-	if category == catalog.CategoryMovie {
+	switch category {
+	case catalog.CategoryMovie:
 		return "movie"
+	case catalog.CategoryShort:
+		return "short"
+	default:
+		return "series"
 	}
-	return "series"
 }
 
 // providerDisplayName mengembalikan nama tampilan provider.

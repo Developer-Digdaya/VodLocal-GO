@@ -233,7 +233,7 @@ func ValidateManifest(m *Manifest) error {
 		if strings.TrimSpace(item.Provider) == "" {
 			return fmt.Errorf("%w: item %d tanpa provider", ErrInvalidPackage, i+1)
 		}
-		if item.Title.Kind != "movie" && item.Title.Kind != "series" {
+		if item.Title.Kind != "movie" && item.Title.Kind != "series" && item.Title.Kind != "short" {
 			return fmt.Errorf("%w: item %d kind %q tidak dikenal", ErrInvalidPackage, i+1, item.Title.Kind)
 		}
 		if strings.TrimSpace(item.Title.ExternalID) == "" {
