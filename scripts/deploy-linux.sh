@@ -12,7 +12,7 @@ set -euo pipefail
 #   ADMIN_USER           default: admin
 #   ADMIN_PASSWORD       kosong = generate acak
 #   SESSION_SECRET       kosong = generate acak
-#   DRAMAHITS_BASE_URL   default: URL staging di deploy/vodlocal.env.example
+#   DRAMAHITS_BASE_URL   default: URL produksi di deploy/vodlocal.env.example
 #   DENSGO_BASE_URL      default: URL publik Densgo (movie & series); lihat
 #                        deploy/vodlocal.env.example
 #   GO_BIN               path ke binary go (untuk sudo dengan secure_path)
@@ -29,6 +29,10 @@ SERVICE_FILE="/etc/systemd/system/vodlocal.service"
 # Default URL publik Densgo (movie & series). Nilai env yang sudah ada tidak diubah;
 # variabel ini hanya dipakai saat env baru dibuat atau saat baris Densgo belum ada.
 DENSGO_BASE_URL="${DENSGO_BASE_URL:-https://pp.dens.tv:777/index.php/v3070/adps_list_movies_v1}"
+
+# Default API Dramahits produksi (tab Short). Sama seperti Densgo, nilai env yang
+# sudah ada tidak diubah; lihat blok upgrade di bawah untuk URL staging lama.
+DRAMAHITS_BASE_URL="${DRAMAHITS_BASE_URL:-https://microdrama.digdaya.co.id/api/v1}"
 
 log() { printf '\n==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -116,6 +120,17 @@ if [ -f "$ENV_FILE" ]; then
     } >> "$ENV_FILE"
     log "Menambahkan VODLOCAL_DENSGO_BASE_URL ke env yang sudah ada"
   fi
+
+  # Upgrade dari versi lama: URL Dramahits staging -> produksi. Hanya baris yang
+  # masih berisi default lama yang diubah; URL kustom tidak disentuh.
+  if grep -qx 'VODLOCAL_DRAMAHITS_BASE_URL=https://stage-microdrama.digdaya.co.id/api/v1' "$ENV_FILE"; then
+    sed -i "s#^VODLOCAL_DRAMAHITS_BASE_URL=https://stage-microdrama.digdaya.co.id/api/v1\$#VODLOCAL_DRAMAHITS_BASE_URL=$DRAMAHITS_BASE_URL#" "$ENV_FILE"
+    log "Mengganti VODLOCAL_DRAMAHITS_BASE_URL staging ke $DRAMAHITS_BASE_URL"
+  fi
+  if ! grep -q '^VODLOCAL_DRAMAHITS_BASE_URL=' "$ENV_FILE"; then
+    printf 'VODLOCAL_DRAMAHITS_BASE_URL=%s\n' "$DRAMAHITS_BASE_URL" >> "$ENV_FILE"
+    log "Menambahkan VODLOCAL_DRAMAHITS_BASE_URL ke env yang sudah ada"
+  fi
 else
   log "Membuat env: $ENV_FILE"
   SESSION_SECRET="${SESSION_SECRET:-$(openssl rand -hex 32)}"
@@ -128,9 +143,8 @@ else
     ADMIN_PASSWORD="$(openssl rand -hex 12)"
     GENERATED_PASSWORD=1
   fi
-  DRAMAHITS_BASE_URL="${DRAMAHITS_BASE_URL:-https://stage-microdrama.digdaya.co.id/api/v1}"
 
-  sed -e "s#/var/www/VodLocal#$APP_DIR#g" \
+  sed -e "s#/var/www/vodlocal#$APP_DIR#g" \
       -e "s#^VODLOCAL_DENSGO_BASE_URL=.*#VODLOCAL_DENSGO_BASE_URL=$DENSGO_BASE_URL#" \
       -e "/^VODLOCAL_SESSION_SECRET=/d" \
       -e "/^VODLOCAL_ADMIN_USER=/d" \
@@ -222,7 +236,7 @@ fi
 
 # 5. Systemd unit
 log "Memasang systemd unit"
-sed "s#/var/www/VodLocal#$APP_DIR#g" "$ROOT/deploy/vodlocal.service" > "$SERVICE_FILE"
+sed "s#/var/www/vodlocal#$APP_DIR#g" "$ROOT/deploy/vodlocal.service" > "$SERVICE_FILE"
 chmod 644 "$SERVICE_FILE"
 systemctl daemon-reload
 systemctl enable vodlocal >/dev/null

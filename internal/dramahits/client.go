@@ -1,4 +1,4 @@
-// Package dramahits berisi klien HTTP untuk API staging Dramahits.
+// Package dramahits berisi klien HTTP untuk API Dramahits.
 //
 // Klien ini membaca dua endpoint penyedia konten:
 //
@@ -10,7 +10,7 @@
 //
 // Contoh pemakaian:
 //
-//	c := dramahits.NewClient("https://stage-microdrama.digdaya.co.id/api/v1", 30*time.Second)
+//	c := dramahits.NewClient("https://microdrama.digdaya.co.id/api/v1", 30*time.Second)
 //	page, err := c.ListSeries(ctx, 1)
 package dramahits
 
@@ -49,7 +49,7 @@ const (
 // asalkan BaseURL diisi: HTTP akan jatuh ke http.DefaultClient.
 type Client struct {
 	// BaseURL adalah akar API, misalnya
-	// "https://stage-microdrama.digdaya.co.id/api/v1". Garis miring di akhir
+	// "https://microdrama.digdaya.co.id/api/v1". Garis miring di akhir
 	// diabaikan.
 	BaseURL string
 

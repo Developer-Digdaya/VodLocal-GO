@@ -163,14 +163,14 @@ cd VodLocal
 
 go build -o bin/vodlocal ./cmd/server
 
-VODLOCAL_DRAMAHITS_BASE_URL='https://<host-dramahits>/api/v1' \
+VODLOCAL_DRAMAHITS_BASE_URL='https://microdrama.digdaya.co.id/api/v1' \
 VODLOCAL_ADMIN_USER=admin \
 VODLOCAL_ADMIN_PASSWORD='ganti-password-kuat' \
 VODLOCAL_SESSION_SECRET='ganti-dengan-rahasia-acak-minimal-16-karakter' \
 ./bin/vodlocal
 ```
 
-`VODLOCAL_DRAMAHITS_BASE_URL` wajib diisi; contoh nilai staging ada di
+`VODLOCAL_DRAMAHITS_BASE_URL` wajib diisi; contoh nilai produksi ada di
 [`deploy/vodlocal.env.example`](./deploy/vodlocal.env.example).
 `VODLOCAL_DENSGO_BASE_URL` sudah diekspor `scripts/run-local.sh` dengan URL
 publik Densgo, jadi tidak perlu diisi untuk development.
@@ -186,7 +186,7 @@ bash scripts/run-local.sh
 `make run` memanggil skrip yang sama. Override lewat env, misalnya
 `VODLOCAL_ADMIN_PASSWORD='password-lain' bash scripts/run-local.sh`.
 Di PowerShell, set environment yang sama lalu jalankan `go run ./cmd/server`.
-Di produksi, semua nilai tetap wajib diisi lewat `/var/www/VodLocal/vodlocal.env`.
+Di produksi, semua nilai tetap wajib diisi lewat `/var/www/vodlocal/vodlocal.env`.
 
 Admin default hanya dibuat saat tabel `auth_users` masih kosong. Kalau lupa
 kata sandi, reset **hanya akun admin** tanpa menghapus katalog:
@@ -703,7 +703,23 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" \
 
 ### 12.2 Deploy otomatis (Linux)
 
-Dari root repo di server:
+Instalasi dari nol (paket dasar, clone, Go, systemd, dan auto-mount USB) cukup
+dengan satu file di setiap mini PC:
+
+```bash
+sudo bash install-linux.sh
+# atau, tanpa clone manual selama repo publik:
+curl -fsSL -o /tmp/vodlocal-install.sh \
+  https://raw.githubusercontent.com/Developer-Digdaya/VodLocal-GO/main/scripts/install-linux.sh
+sudo bash /tmp/vodlocal-install.sh
+```
+
+Skrip itu idempoten: jalankan ulang untuk update (git pull + build + restart).
+Installer juga menonaktifkan `nginx`/`apache2` yang memakai port 80 dan membuka
+port 80 di `ufw` bila firewall itu aktif. Set `SKIP_USB_AUTOMOUNT=1` bila
+auto-mount USB tidak diinginkan.
+
+Dari root repo di server (hanya deploy, tanpa pasang dependensi):
 
 ```bash
 sudo bash scripts/deploy-linux.sh
@@ -721,7 +737,7 @@ Override lewat environment:
 ```bash
 sudo -E DISABLE_NGINX=1 \
   ADMIN_PASSWORD='password-kuat' \
-  DRAMAHITS_BASE_URL='https://host-dramahits/api/v1' \
+  DRAMAHITS_BASE_URL='https://microdrama.digdaya.co.id/api/v1' \
   bash scripts/deploy-linux.sh
 ```
 
@@ -744,16 +760,16 @@ sudo env GO_BIN="$(command -v go)" bash scripts/deploy-linux.sh
 ```bash
 scp bin/vodlocal-linux-amd64 <ssh-user>@<server-ip>:/tmp/vodlocal
 
-sudo useradd --system --home /var/www/VodLocal --shell /usr/sbin/nologin vodlocal
-sudo mkdir -p /var/www/VodLocal/bin /var/www/VodLocal/data
-sudo mv /tmp/vodlocal /var/www/VodLocal/bin/vodlocal
-sudo chown root:root /var/www/VodLocal/bin/vodlocal
-sudo chown -R vodlocal:vodlocal /var/www/VodLocal/data
+sudo useradd --system --home /var/www/vodlocal --shell /usr/sbin/nologin vodlocal
+sudo mkdir -p /var/www/vodlocal/bin /var/www/vodlocal/data
+sudo mv /tmp/vodlocal /var/www/vodlocal/bin/vodlocal
+sudo chown root:root /var/www/vodlocal/bin/vodlocal
+sudo chown -R vodlocal:vodlocal /var/www/vodlocal/data
 sudo cp deploy/vodlocal.service /etc/systemd/system/vodlocal.service
-sudo cp deploy/vodlocal.env.example /var/www/VodLocal/vodlocal.env
-sudo editor /var/www/VodLocal/vodlocal.env
-sudo chown root:root /var/www/VodLocal/vodlocal.env
-sudo chmod 600 /var/www/VodLocal/vodlocal.env
+sudo cp deploy/vodlocal.env.example /var/www/vodlocal/vodlocal.env
+sudo editor /var/www/vodlocal/vodlocal.env
+sudo chown root:root /var/www/vodlocal/vodlocal.env
+sudo chmod 600 /var/www/vodlocal/vodlocal.env
 sudo systemctl daemon-reload
 sudo systemctl enable --now vodlocal
 sudo journalctl -u vodlocal -f
@@ -774,15 +790,17 @@ curl -fsS http://<server>/ready
 Jalankan `git pull` sebagai pemilik repo (bukan root), lalu deploy lagi:
 
 ```bash
-cd /var/www/VodLocal   # sesuaikan dengan lokasi clone
+cd /var/www/vodlocal   # sesuaikan dengan lokasi clone
 git pull --ff-only
 sudo ./scripts/deploy-linux.sh
 ```
 
 Skrip melakukan build ulang, memasang ulang unit systemd, dan restart service.
 Nilai env yang sudah ada tidak ditimpa; bila `VODLOCAL_DENSGO_BASE_URL` belum ada,
-skrip menambahkannya otomatis. Kalau `deploy/vodlocal.env.example` berubah,
-bandingkan dan tambahkan variabel baru secara manual:
+skrip menambahkannya otomatis. Satu pengecualian: `VODLOCAL_DRAMAHITS_BASE_URL`
+yang masih berisi URL staging lama otomatis diganti ke URL produksi. Kalau
+`deploy/vodlocal.env.example` berubah, bandingkan dan tambahkan variabel baru
+secara manual:
 
 ```bash
 diff -u deploy/vodlocal.env.example vodlocal.env

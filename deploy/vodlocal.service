@@ -1,6 +1,6 @@
 [Unit]
 Description=VodLocal Bus Media Server
-Documentation=file:///var/www/VodLocal/README.md
+Documentation=file:///var/www/vodlocal/README.md
 After=network-online.target
 Wants=network-online.target
 
@@ -8,9 +8,9 @@ Wants=network-online.target
 Type=simple
 User=vodlocal
 Group=vodlocal
-WorkingDirectory=/var/www/VodLocal
-EnvironmentFile=-/var/www/VodLocal/vodlocal.env
-ExecStart=/var/www/VodLocal/bin/vodlocal
+WorkingDirectory=/var/www/vodlocal
+EnvironmentFile=-/var/www/vodlocal/vodlocal.env
+ExecStart=/var/www/vodlocal/bin/vodlocal
 Restart=on-failure
 RestartSec=2s
 LimitNOFILE=65535
@@ -18,7 +18,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/www/VodLocal/data
+ReadWritePaths=/var/www/vodlocal/data
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 
